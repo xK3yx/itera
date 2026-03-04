@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://redis:6379/0"
 
-    # Gemini
-    gemini_api_key: str
+    # Groq
+    groq_api_key: str
 
     # JWT
     jwt_secret_key: str

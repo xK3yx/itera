@@ -37,3 +37,15 @@ async def health_check():
 @app.get("/")
 async def root():
     return {"message": f"Welcome to {settings.app_name} API"}
+
+
+@app.get("/test-ai")
+async def test_ai():
+    """Temporary endpoint to test Groq API connection."""
+    from app.services.ai_service import ai_service
+    connected, message = await ai_service.test_connection()
+    return {
+        "groq_connected": connected,
+        "status": "ok" if connected else "error",
+        "message": message
+    }
