@@ -41,7 +41,7 @@ async def root():
 
 @app.get("/test-ai")
 async def test_ai():
-    """Temporary endpoint to test Groq API connection."""
+    """Test Groq API connection."""
     from app.services.ai_service import ai_service
     connected, message = await ai_service.test_connection()
     return {
@@ -49,3 +49,14 @@ async def test_ai():
         "status": "ok" if connected else "error",
         "message": message
     }
+
+
+@app.get("/test-roadmap")
+async def test_roadmap():
+    """
+    Test full roadmap generation with a sample profile.
+    Simulates: 5yr Python/Django backend dev wanting to learn React, 10hrs/week.
+    """
+    from app.services.ai_service import ai_service
+    result = await ai_service.test_roadmap_generation()
+    return result
