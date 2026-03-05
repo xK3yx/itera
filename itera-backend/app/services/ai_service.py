@@ -95,22 +95,15 @@ class AIService:
         user_message: str,
         conversation_history: list[dict]
     ) -> dict:
-        """
-        Process a user message and return either a question or a full roadmap.
-        conversation_history: list of {"role": "user"/"assistant", "content": "text"}
-        """
         try:
-            # Build messages for Groq
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            # Add conversation history
             for msg in conversation_history:
                 messages.append({
                     "role": msg["role"],
                     "content": msg["content"]
                 })
 
-            # Add current message
             messages.append({
                 "role": "user",
                 "content": user_message
@@ -124,14 +117,10 @@ class AIService:
             )
 
             raw = response.choices[0].message.content.strip()
-
-            # Strip markdown code fences if model adds them
             clean = re.sub(r"```json|```", "", raw).strip()
 
-            # Parse JSON response
             parsed = json.loads(clean)
 
-            # Ensure required fields exist
             if "ready" not in parsed:
                 parsed["ready"] = False
             if "message" not in parsed:
@@ -140,10 +129,21 @@ class AIService:
             return parsed
 
         except json.JSONDecodeError:
-            # If model didn't return valid JSON, wrap it
+            raw_text = response.choices[0].message.content.strip()
+            try:
+                match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                if match:
+                    parsed = json.loads(match.group())
+                    if "ready" not in parsed:
+                        parsed["ready"] = False
+                    if "message" not in parsed:
+                        parsed["message"] = raw_text
+                    return parsed
+            except Exception:
+                pass
             return {
                 "ready": False,
-                "message": response.choices[0].message.content.strip()
+                "message": raw_text
             }
         except Exception as e:
             return {
@@ -152,7 +152,6 @@ class AIService:
             }
 
     async def test_connection(self) -> tuple[bool, str]:
-        """Test that the Groq API connection works."""
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -164,10 +163,6 @@ class AIService:
             return False, str(e)
 
     async def test_roadmap_generation(self) -> dict:
-        """
-        Test full roadmap generation with a sample profile.
-        Simulates a user who is a backend developer wanting to learn React.
-        """
         test_history = [
             {
                 "role": "assistant",
