@@ -3,22 +3,54 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import JSON
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, String
 from sqlalchemy.types import TypeDecorator
+import uuid
 from app.main import app
 from app.database import get_db, Base
 import app.models.roadmap as roadmap_model
+import app.models.user as user_model
+import app.models.session as session_model
+import app.models.message as message_model
 
-# SQLite-compatible JSON replacement for JSONB
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+# Patch JSONB → JSON for SQLite
 class SQLiteJSON(TypeDecorator):
     impl = JSON
     cache_ok = True
 
-# Patch JSONB to use JSON for SQLite in tests
-roadmap_model.Roadmap.__table__.c.skill_areas.type = SQLiteJSON()
+# Patch UUID → String for SQLite
+class SQLiteUUID(TypeDecorator):
+    impl = String
+    cache_ok = True
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        return str(value)
+
+
+def patch_model_columns():
+    """Patch PostgreSQL-specific types to SQLite-compatible ones."""
+    from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+    for mapper in Base.registry.mappers:
+        table = mapper.local_table
+        for column in table.columns:
+            if isinstance(column.type, JSONB):
+                column.type = SQLiteJSON()
+            elif isinstance(column.type, UUID):
+                column.type = SQLiteUUID()
+
+
+patch_model_columns()
 
 
 @pytest_asyncio.fixture(scope="function")
