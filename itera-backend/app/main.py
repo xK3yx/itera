@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routers import auth
+from app.routers import auth, chat
 
 settings = get_settings()
 
@@ -23,6 +23,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(chat.router)
 
 
 @app.get("/health")
@@ -53,10 +54,7 @@ async def test_ai():
 
 @app.get("/test-roadmap")
 async def test_roadmap():
-    """
-    Test full roadmap generation with a sample profile.
-    Simulates: 5yr Python/Django backend dev wanting to learn React, 10hrs/week.
-    """
+    """Test full roadmap generation with a sample profile."""
     from app.services.ai_service import ai_service
     result = await ai_service.test_roadmap_generation()
     return result
