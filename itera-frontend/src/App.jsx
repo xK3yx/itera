@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import Chat from './pages/Chat'
 import useAuthStore from './store/authStore'
 
 function ProtectedRoute({ children }) {
@@ -19,9 +20,7 @@ export default function App() {
           path="/chat"
           element={
             <ProtectedRoute>
-              <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <h1 className="text-2xl font-bold text-gray-700">Chat coming in Task 2.3 🚀</h1>
-              </div>
+              <Chat />
             </ProtectedRoute>
           }
         />
