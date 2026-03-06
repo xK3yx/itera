@@ -5,6 +5,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30s timeout for AI responses
 })
 
 export const setAuthToken = (token) => {
@@ -14,5 +15,18 @@ export const setAuthToken = (token) => {
     delete api.defaults.headers.common['Authorization']
   }
 }
+
+// Response interceptor — handle 401 globally
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired — clear auth and redirect
+      setAuthToken(null)
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
 
 export default api

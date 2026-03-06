@@ -4,25 +4,24 @@ import useAuthStore from '../store/authStore'
 import useChatStore from '../store/chatStore'
 import MessageBubble from '../components/MessageBubble'
 import TypingIndicator from '../components/TypingIndicator'
+import RoadmapView from '../components/RoadmapView'
 
 export default function Chat() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
-  const { sessionId, messages, isTyping, startSession, sendMessage, clearSession } = useChatStore()
+  const { sessionId, messages, roadmap, isTyping, startSession, sendMessage, clearSession } = useChatStore()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
 
-  // Start a session when page loads
   useEffect(() => {
     if (!sessionId) {
       startSession()
     }
   }, [])
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping])
+  }, [messages, isTyping, roadmap])
 
   const handleSend = async () => {
     const text = input.trim()
@@ -79,7 +78,6 @@ export default function Chat() {
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-6 max-w-3xl w-full mx-auto">
 
-        {/* Welcome message when no messages yet */}
         {messages.length === 0 && !isTyping && (
           <div className="text-center py-16">
             <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -95,13 +93,14 @@ export default function Chat() {
           </div>
         )}
 
-        {/* Messages */}
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
 
-        {/* Typing indicator */}
         {isTyping && <TypingIndicator />}
+
+        {/* Roadmap renders here after AI generates it */}
+        {roadmap && <RoadmapView roadmap={roadmap} />}
 
         <div ref={messagesEndRef} />
       </div>
