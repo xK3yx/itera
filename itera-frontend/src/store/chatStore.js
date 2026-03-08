@@ -25,7 +25,6 @@ const useChatStore = create((set, get) => ({
     const { sessionId } = get()
     if (!sessionId) return
 
-    // Add user message immediately
     const userMessage = { role: 'user', content: text, id: Date.now() }
     set((state) => ({ messages: [...state.messages, userMessage], isTyping: true }))
 
@@ -33,7 +32,6 @@ const useChatStore = create((set, get) => ({
       const res = await api.post(`/chat/${sessionId}/message`, { message: text })
       const data = res.data
 
-      // Add assistant message
       const assistantMessage = {
         role: 'assistant',
         content: data.message,
@@ -55,6 +53,15 @@ const useChatStore = create((set, get) => ({
         isTyping: false,
       }))
     }
+  },
+
+  loadFromHistory: ({ sessionId, messages, roadmap }) => {
+    const formatted = messages.map((m, i) => ({
+      role: m.role,
+      content: m.content,
+      id: i,
+    }))
+    set({ sessionId, messages: formatted, roadmap })
   },
 
   clearSession: () => {

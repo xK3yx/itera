@@ -5,18 +5,27 @@ import useChatStore from '../store/chatStore'
 import MessageBubble from '../components/MessageBubble'
 import TypingIndicator from '../components/TypingIndicator'
 import RoadmapView from '../components/RoadmapView'
+import HistoryPanel from '../components/HistoryPanel'
 
 export default function Chat() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
-  const { sessionId, messages, roadmap, isTyping, startSession, sendMessage, clearSession } = useChatStore()
+  const {
+    sessionId,
+    messages,
+    roadmap,
+    isTyping,
+    startSession,
+    sendMessage,
+    clearSession,
+    loadFromHistory,
+  } = useChatStore()
   const [input, setInput] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
-    if (!sessionId) {
-      startSession()
-    }
+    if (!sessionId) startSession()
   }, [])
 
   useEffect(() => {
@@ -48,6 +57,10 @@ export default function Chat() {
     navigate('/login')
   }
 
+  const handleLoadHistory = (data) => {
+    loadFromHistory(data)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
 
@@ -60,6 +73,12 @@ export default function Chat() {
           <span className="font-semibold text-gray-800">Itera</span>
         </div>
         <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setShowHistory(true)}
+            className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition"
+          >
+            History
+          </button>
           <button
             onClick={handleNewSession}
             className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition"
@@ -99,7 +118,6 @@ export default function Chat() {
 
         {isTyping && <TypingIndicator />}
 
-        {/* Roadmap renders here after AI generates it */}
         {roadmap && <RoadmapView roadmap={roadmap} />}
 
         <div ref={messagesEndRef} />
@@ -127,6 +145,14 @@ export default function Chat() {
         </div>
         <p className="text-center text-xs text-gray-400 mt-2">Press Enter to send</p>
       </div>
+
+      {/* History panel */}
+      {showHistory && (
+        <HistoryPanel
+          onClose={() => setShowHistory(false)}
+          onLoad={handleLoadHistory}
+        />
+      )}
 
     </div>
   )
