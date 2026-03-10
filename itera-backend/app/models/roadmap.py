@@ -13,6 +13,8 @@ class Roadmap(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False)
     goal = Column(Text, nullable=False)
     total_estimated_hours = Column(Integer, nullable=False)
+    weekly_hours = Column(Integer, nullable=True)
+    estimated_weeks = Column(Integer, nullable=True)
     skill_areas = Column(JSONB, nullable=False)  # Full structured roadmap stored as JSON
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

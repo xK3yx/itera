@@ -1,10 +1,10 @@
-from groq import Groq
+from groq import AsyncGroq
 import json
 import re
 from app.config import get_settings
 
 settings = get_settings()
-client = Groq(api_key=settings.groq_api_key)
+client = AsyncGroq(api_key=settings.groq_api_key)
 
 COURSE_SEARCH_PROMPT = """You are an expert learning resource curator.
 Your job is to find the best online courses and learning resources for a given topic.
@@ -48,7 +48,7 @@ async def search_courses(
 
 Return exactly {max_results} courses."""
 
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": COURSE_SEARCH_PROMPT},

@@ -10,7 +10,7 @@ const useHistoryStore = create((set) => ({
     try {
       const res = await api.get('/roadmap/')
       set({ sessions: res.data || [], isLoading: false })
-    } catch (err) {
+    } catch {
       set({ isLoading: false })
     }
   },
@@ -26,8 +26,20 @@ const useHistoryStore = create((set) => ({
         roadmap: roadmapRes.data.roadmap || null,
         sessionId,
       }
-    } catch (err) {
+    } catch {
       return null
+    }
+  },
+
+  deleteSession: async (sessionId) => {
+    try {
+      await api.delete(`/chat/${sessionId}`)
+      set((state) => ({
+        sessions: state.sessions.filter((s) => s.session_id !== sessionId),
+      }))
+      return true
+    } catch {
+      return false
     }
   },
 }))

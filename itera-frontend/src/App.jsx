@@ -3,6 +3,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Chat from './pages/Chat'
 import useAuthStore from './store/authStore'
+import './store/themeStore' // apply saved theme before first render
 
 function ProtectedRoute({ children }) {
   const token = useAuthStore((state) => state.token)

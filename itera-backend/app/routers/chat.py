@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from uuid import UUID
 from app.database import get_db
 from app.models.user import User
 from app.models.session import Session
 from app.models.message import Message
+from app.models.roadmap import Roadmap
 from app.middleware.auth_middleware import get_current_user
 from app.services.ai_service import ai_service
 from app.services.session_service import (
@@ -57,7 +58,6 @@ async def send_message(
 ):
     """Send a message and receive AI response."""
 
-    # Verify session belongs to user
     result = await db.execute(
         select(Session).where(
             Session.id == session_id,
@@ -72,16 +72,13 @@ async def send_message(
             detail="Session not found"
         )
 
-    # Get conversation history
     history = await get_conversation_history(session_id, db)
 
-    # Count existing messages for order
     msg_count_result = await db.execute(
         select(Message).where(Message.session_id == session_id)
     )
     msg_count = len(msg_count_result.scalars().all())
 
-    # Save user message
     await save_message(
         session_id=session_id,
         role="user",
@@ -90,7 +87,6 @@ async def send_message(
         db=db
     )
 
-    # Get AI response
     ai_response = await ai_service.process_message(
         user_message=request.message,
         conversation_history=history
@@ -98,7 +94,6 @@ async def send_message(
 
     ai_message_content = ai_response.get("message", "")
 
-    # Save assistant message
     await save_message(
         session_id=session_id,
         role="assistant",
@@ -107,13 +102,11 @@ async def send_message(
         db=db
     )
 
-    # If roadmap is ready, save it and update session
     roadmap_data = None
     if ai_response.get("ready") and ai_response.get("roadmap"):
         roadmap_data = ai_response["roadmap"]
         await save_roadmap(session_id, roadmap_data, db)
 
-        # Update session with goal and mark as completed
         session.goal = roadmap_data.get("goal", "")
         session.status = "completed"
         session.title = roadmap_data.get("goal", session.title)
@@ -150,7 +143,6 @@ async def get_session_history(
             detail="Session not found"
         )
 
-    # Get messages
     msg_result = await db.execute(
         select(Message)
         .where(Message.session_id == session_id)
@@ -173,3 +165,33 @@ async def get_session_history(
             for msg in messages
         ]
     )
+
+
+@router.delete("/{session_id}")
+async def delete_session(
+    session_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a session and all associated messages and roadmap."""
+
+    result = await db.execute(
+        select(Session).where(
+            Session.id == session_id,
+            Session.user_id == current_user.id
+        )
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+
+    await db.execute(delete(Message).where(Message.session_id == session_id))
+    await db.execute(delete(Roadmap).where(Roadmap.session_id == session_id))
+    await db.delete(session)
+    await db.commit()
+
+    return {"message": "Session deleted successfully"}

@@ -96,6 +96,8 @@ async def save_roadmap(
     if existing:
         existing.goal = roadmap_data.get("goal", "")
         existing.total_estimated_hours = roadmap_data.get("total_estimated_hours", 0)
+        existing.weekly_hours = roadmap_data.get("weekly_hours")
+        existing.estimated_weeks = roadmap_data.get("estimated_weeks")
         existing.skill_areas = roadmap_data.get("skill_areas", [])
         return existing
 
@@ -103,6 +105,8 @@ async def save_roadmap(
         session_id=session_id,
         goal=roadmap_data.get("goal", ""),
         total_estimated_hours=roadmap_data.get("total_estimated_hours", 0),
+        weekly_hours=roadmap_data.get("weekly_hours"),
+        estimated_weeks=roadmap_data.get("estimated_weeks"),
         skill_areas=roadmap_data.get("skill_areas", [])
     )
     db.add(roadmap)

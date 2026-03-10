@@ -1,11 +1,11 @@
-from groq import Groq
+from groq import AsyncGroq
 import json
 import re
 from app.config import get_settings
 
 settings = get_settings()
 
-client = Groq(api_key=settings.groq_api_key)
+client = AsyncGroq(api_key=settings.groq_api_key)
 
 SYSTEM_PROMPT = """You are Itera, an expert learning coach and curriculum designer.
 Your job is to analyze a user's existing skills and experience, then create a
@@ -109,7 +109,7 @@ class AIService:
                 "content": user_message
             })
 
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
@@ -129,21 +129,20 @@ class AIService:
             return parsed
 
         except json.JSONDecodeError:
-            raw_text = response.choices[0].message.content.strip()
             try:
-                match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                match = re.search(r'\{.*\}', raw, re.DOTALL)
                 if match:
                     parsed = json.loads(match.group())
                     if "ready" not in parsed:
                         parsed["ready"] = False
                     if "message" not in parsed:
-                        parsed["message"] = raw_text
+                        parsed["message"] = raw
                     return parsed
             except Exception:
                 pass
             return {
                 "ready": False,
-                "message": raw_text
+                "message": raw
             }
         except Exception as e:
             return {
@@ -153,7 +152,7 @@ class AIService:
 
     async def test_connection(self) -> tuple[bool, str]:
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": "Say hello in one word."}],
                 max_tokens=10
