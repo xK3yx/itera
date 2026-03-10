@@ -14,8 +14,8 @@ class Course(BaseModel):
     url: str
     duration: str
     level: str
-    description: str
-    why_recommended: str
+    description: Optional[str] = None
+    why_recommended: Optional[str] = None
 
 
 class CourseSearchResponse(BaseModel):

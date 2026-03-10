@@ -10,7 +10,7 @@ class StartSessionRequest(BaseModel):
 
 class StartSessionResponse(BaseModel):
     session_id: UUID
-    title: str
+    title: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -39,7 +39,7 @@ class SendMessageResponse(BaseModel):
 
 class SessionHistoryResponse(BaseModel):
     session_id: UUID
-    title: str
+    title: Optional[str] = None
     goal: Optional[str] = None
     status: str
     created_at: datetime

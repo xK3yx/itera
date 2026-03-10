@@ -35,6 +35,42 @@ def _build_skill_areas(roadmap):
     return skill_areas
 
 
+@router.get("/", response_model=list[SessionRoadmapResponse])
+async def get_all_roadmaps(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all roadmaps for the current user."""
+
+    # Single JOIN query — eliminates N+1
+    result = await db.execute(
+        select(Session, Roadmap)
+        .join(Roadmap, Roadmap.session_id == Session.id)
+        .where(Session.user_id == current_user.id)
+        .order_by(Session.created_at.desc())
+    )
+    rows = result.all()
+
+    return [
+        SessionRoadmapResponse(
+            session_id=session.id,
+            session_title=session.title,
+            status=session.status,
+            roadmap=RoadmapResponse(
+                roadmap_id=roadmap.id,
+                session_id=roadmap.session_id,
+                goal=roadmap.goal,
+                total_estimated_hours=roadmap.total_estimated_hours,
+                weekly_hours=roadmap.weekly_hours,
+                estimated_weeks=roadmap.estimated_weeks,
+                skill_areas=_build_skill_areas(roadmap),
+                created_at=roadmap.created_at
+            )
+        )
+        for session, roadmap in rows
+    ]
+
+
 @router.get("/{session_id}", response_model=SessionRoadmapResponse)
 async def get_roadmap(
     session_id: UUID,
@@ -84,39 +120,3 @@ async def get_roadmap(
         status=session.status,
         roadmap=roadmap_response
     )
-
-
-@router.get("/", response_model=list[SessionRoadmapResponse])
-async def get_all_roadmaps(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get all roadmaps for the current user."""
-
-    # Single JOIN query — eliminates N+1
-    result = await db.execute(
-        select(Session, Roadmap)
-        .join(Roadmap, Roadmap.session_id == Session.id)
-        .where(Session.user_id == current_user.id)
-        .order_by(Session.created_at.desc())
-    )
-    rows = result.all()
-
-    return [
-        SessionRoadmapResponse(
-            session_id=session.id,
-            session_title=session.title,
-            status=session.status,
-            roadmap=RoadmapResponse(
-                roadmap_id=roadmap.id,
-                session_id=roadmap.session_id,
-                goal=roadmap.goal,
-                total_estimated_hours=roadmap.total_estimated_hours,
-                weekly_hours=roadmap.weekly_hours,
-                estimated_weeks=roadmap.estimated_weeks,
-                skill_areas=_build_skill_areas(roadmap),
-                created_at=roadmap.created_at
-            )
-        )
-        for session, roadmap in rows
-    ]

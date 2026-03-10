@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   api:
     build: .
@@ -11,8 +9,9 @@ services:
       - REDIS_URL=${REDIS_URL}
       - SECRET_KEY=${SECRET_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
-      - ALGORITHM=${ALGORITHM}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES}
     depends_on:
       db:
         condition: service_healthy

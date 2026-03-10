@@ -20,37 +20,44 @@ async def get_conversation_history(
     db: AsyncSession
 ) -> list[dict]:
     """Get conversation history from Redis cache or database."""
-    redis = get_redis()
-
     try:
-        # Try Redis cache first
-        cache_key = f"history:{session_id}"
-        cached = await redis.get(cache_key)
+        redis = get_redis()
+        try:
+            cache_key = f"history:{session_id}"
+            cached = await redis.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        finally:
+            await redis.aclose()
+    except Exception:
+        pass
 
-        if cached:
-            return json.loads(cached)
+    # Fall back to database
+    result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.order)
+    )
+    messages = result.scalars().all()
 
-        # Fall back to database
-        result = await db.execute(
-            select(Message)
-            .where(Message.session_id == session_id)
-            .order_by(Message.order)
-        )
-        messages = result.scalars().all()
+    history = [
+        {"role": msg.role, "content": msg.content}
+        for msg in messages
+    ]
 
-        history = [
-            {"role": msg.role, "content": msg.content}
-            for msg in messages
-        ]
+    # Cache for 1 hour (best-effort)
+    if history:
+        try:
+            redis = get_redis()
+            try:
+                cache_key = f"history:{session_id}"
+                await redis.setex(cache_key, 3600, json.dumps(history))
+            finally:
+                await redis.aclose()
+        except Exception:
+            pass
 
-        # Cache for 1 hour
-        if history:
-            await redis.setex(cache_key, 3600, json.dumps(history))
-
-        return history
-
-    finally:
-        await redis.aclose()
+    return history
 
 
 async def save_message(
@@ -70,13 +77,16 @@ async def save_message(
     db.add(message)
     await db.flush()
 
-    # Invalidate cache so it gets refreshed next time
-    redis = get_redis()
+    # Invalidate cache so it gets refreshed next time (best-effort)
     try:
-        cache_key = f"history:{session_id}"
-        await redis.delete(cache_key)
-    finally:
-        await redis.aclose()
+        redis = get_redis()
+        try:
+            cache_key = f"history:{session_id}"
+            await redis.delete(cache_key)
+        finally:
+            await redis.aclose()
+    except Exception:
+        pass
 
     return message
 

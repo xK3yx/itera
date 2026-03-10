@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from uuid import UUID
 from app.database import get_db
 from app.models.user import User
@@ -75,9 +75,9 @@ async def send_message(
     history = await get_conversation_history(session_id, db)
 
     msg_count_result = await db.execute(
-        select(Message).where(Message.session_id == session_id)
+        select(func.count(Message.id)).where(Message.session_id == session_id)
     )
-    msg_count = len(msg_count_result.scalars().all())
+    msg_count = msg_count_result.scalar()
 
     await save_message(
         session_id=session_id,

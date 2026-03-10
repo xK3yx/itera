@@ -4,7 +4,7 @@ import axios from 'axios'
 // In dev, Vite proxies /api/ to localhost:8000
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000,
+  timeout: 60000,
 })
 
 export const setAuthToken = (token) => {

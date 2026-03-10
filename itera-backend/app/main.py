@@ -47,21 +47,3 @@ async def root():
     return {"message": f"Welcome to {settings.app_name} API"}
 
 
-@app.get("/test-ai")
-async def test_ai():
-    """Test Groq API connection."""
-    from app.services.ai_service import ai_service
-    connected, message = await ai_service.test_connection()
-    return {
-        "groq_connected": connected,
-        "status": "ok" if connected else "error",
-        "message": message
-    }
-
-
-@app.get("/test-roadmap")
-async def test_roadmap():
-    """Test full roadmap generation with a sample profile."""
-    from app.services.ai_service import ai_service
-    result = await ai_service.test_roadmap_generation()
-    return result

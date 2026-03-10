@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from app.services.course_service import search_courses
 
 pytestmark = pytest.mark.asyncio
@@ -24,7 +24,7 @@ async def test_search_courses_returns_list():
     '''
 
     with patch('app.services.course_service.client') as mock_client:
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         result = await search_courses("React", level="Beginner", max_results=1)
         assert isinstance(result, list)
         assert len(result) == 1
@@ -50,7 +50,7 @@ async def test_search_courses_has_required_fields():
     '''
 
     with patch('app.services.course_service.client') as mock_client:
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         result = await search_courses("Python")
         assert len(result) > 0
         course = result[0]
@@ -66,13 +66,13 @@ async def test_search_courses_invalid_json_returns_empty():
     mock_response.choices[0].message.content = "not valid json"
 
     with patch('app.services.course_service.client') as mock_client:
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         result = await search_courses("React")
         assert result == []
 
 
 async def test_search_courses_api_error_returns_empty():
     with patch('app.services.course_service.client') as mock_client:
-        mock_client.chat.completions.create.side_effect = Exception("API Error")
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
         result = await search_courses("React")
         assert result == []

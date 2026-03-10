@@ -12,7 +12,7 @@ export default function Chat() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const {
-    sessionId, messages, roadmap, isTyping,
+    sessionId, messages, roadmap, isTyping, isLoading, error,
     startSession, sendMessage, clearSession, loadFromHistory,
   } = useChatStore()
   const { theme, setTheme } = useThemeStore()
@@ -30,7 +30,7 @@ export default function Chat() {
 
   const handleSend = async () => {
     const text = input.trim()
-    if (!text || isTyping) return
+    if (!text || isTyping || isLoading) return
     setInput('')
     await sendMessage(text)
   }
@@ -105,9 +105,24 @@ export default function Chat() {
         </nav>
       </header>
 
+      {/* Session error banner */}
+      {error && !sessionId && (
+        <div className="bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-800 px-4 py-3 text-center">
+          <p className="text-red-600 dark:text-red-400 text-sm">
+            {error}{' '}
+            <button
+              onClick={() => startSession()}
+              className="underline font-medium hover:no-underline"
+            >
+              Try again
+            </button>
+          </p>
+        </div>
+      )}
+
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-6 max-w-3xl w-full mx-auto">
-        {messages.length === 0 && !isTyping && (
+        {messages.length === 0 && !isTyping && !isLoading && (
           <div className="text-center py-16">
             <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">🎯</span>
@@ -138,14 +153,15 @@ export default function Chat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Tell me what you want to learn..."
+            placeholder={isLoading && !sessionId ? 'Starting session...' : 'Tell me what you want to learn...'}
+            disabled={isLoading && !sessionId}
             rows={1}
-            className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
+            className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ minHeight: '44px' }}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isTyping}
+            disabled={!input.trim() || isTyping || (isLoading && !sessionId)}
             className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-5 py-3 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
             Send

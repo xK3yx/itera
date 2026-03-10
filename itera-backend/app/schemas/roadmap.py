@@ -44,6 +44,6 @@ class RoadmapResponse(BaseModel):
 
 class SessionRoadmapResponse(BaseModel):
     session_id: UUID
-    session_title: str
+    session_title: Optional[str] = None
     status: str
     roadmap: Optional[RoadmapResponse] = None
