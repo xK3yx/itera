@@ -12,7 +12,7 @@ export default function Chat() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const {
-    sessionId, messages, roadmap, isTyping, isLoading, error,
+    sessionId, messages, roadmap, roadmapMessageCount, isTyping, isLoading, error,
     startSession, sendMessage, clearSession, loadFromHistory,
   } = useChatStore()
   const { theme, setTheme } = useThemeStore()
@@ -137,12 +137,23 @@ export default function Chat() {
           </div>
         )}
 
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
-        ))}
+        {roadmapMessageCount != null ? (
+          <>
+            {messages.slice(0, roadmapMessageCount).map((msg) => (
+              <MessageBubble key={msg.id} message={msg} />
+            ))}
+            {roadmap && <RoadmapView roadmap={roadmap} />}
+            {messages.slice(roadmapMessageCount).map((msg) => (
+              <MessageBubble key={msg.id} message={msg} />
+            ))}
+          </>
+        ) : (
+          messages.map((msg) => (
+            <MessageBubble key={msg.id} message={msg} />
+          ))
+        )}
 
         {isTyping && <TypingIndicator />}
-        {roadmap && <RoadmapView roadmap={roadmap} />}
         <div ref={messagesEndRef} />
       </div>
 
@@ -153,7 +164,13 @@ export default function Chat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isLoading && !sessionId ? 'Starting session...' : 'Tell me what you want to learn...'}
+            placeholder={
+              isLoading && !sessionId
+                ? 'Starting session...'
+                : roadmap
+                ? 'Ask anything about your roadmap...'
+                : 'Tell me what you want to learn...'
+            }
             disabled={isLoading && !sessionId}
             rows={1}
             className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-32 disabled:opacity-50 disabled:cursor-not-allowed"

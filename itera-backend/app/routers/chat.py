@@ -87,10 +87,31 @@ async def send_message(
         db=db
     )
 
-    ai_response = await ai_service.process_message(
-        user_message=request.message,
-        conversation_history=history
-    )
+    if session.status == "completed":
+        # Roadmap already exists — use discussion mode
+        roadmap_result = await db.execute(
+            select(Roadmap).where(Roadmap.session_id == session_id)
+        )
+        existing_roadmap = roadmap_result.scalar_one_or_none()
+        roadmap_context = {}
+        if existing_roadmap:
+            roadmap_context = {
+                "goal": existing_roadmap.goal,
+                "total_estimated_hours": existing_roadmap.total_estimated_hours,
+                "weekly_hours": existing_roadmap.weekly_hours,
+                "estimated_weeks": existing_roadmap.estimated_weeks,
+                "skill_areas": existing_roadmap.skill_areas,
+            }
+        ai_response = await ai_service.process_followup_message(
+            user_message=request.message,
+            conversation_history=history,
+            roadmap_data=roadmap_context
+        )
+    else:
+        ai_response = await ai_service.process_message(
+            user_message=request.message,
+            conversation_history=history
+        )
 
     ai_message_content = ai_response.get("message", "")
 
@@ -103,7 +124,7 @@ async def send_message(
     )
 
     roadmap_data = None
-    if ai_response.get("ready") and ai_response.get("roadmap"):
+    if session.status != "completed" and ai_response.get("ready") and ai_response.get("roadmap"):
         roadmap_data = ai_response["roadmap"]
         await save_roadmap(session_id, roadmap_data, db)
 

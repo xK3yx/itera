@@ -8,6 +8,7 @@ const useChatStore = create(
       sessionId: null,
       messages: [],
       roadmap: null,
+      roadmapMessageCount: null,
       isLoading: false,
       isTyping: false,
       error: null,
@@ -40,11 +41,15 @@ const useChatStore = create(
             content: data.message,
             id: Date.now() + 1,
           }
-          set((state) => ({
-            messages: [...state.messages, assistantMessage],
-            isTyping: false,
-            roadmap: data.roadmap || state.roadmap,
-          }))
+          set((state) => {
+            const newMessages = [...state.messages, assistantMessage]
+            return {
+              messages: newMessages,
+              isTyping: false,
+              roadmap: data.roadmap || state.roadmap,
+              roadmapMessageCount: data.roadmap ? newMessages.length : state.roadmapMessageCount,
+            }
+          })
         } catch (err) {
           set((state) => ({
             messages: [...state.messages, {
@@ -64,11 +69,17 @@ const useChatStore = create(
           content: m.content,
           id: i,
         }))
-        set({ sessionId, messages: formatted, roadmap })
+        set({
+          sessionId,
+          messages: formatted,
+          roadmap,
+          // All loaded messages are pre-roadmap; follow-ups will appear below
+          roadmapMessageCount: roadmap ? formatted.length : null,
+        })
       },
 
       clearSession: () => {
-        set({ sessionId: null, messages: [], roadmap: null, error: null })
+        set({ sessionId: null, messages: [], roadmap: null, roadmapMessageCount: null, error: null })
       },
     }),
     {
@@ -77,6 +88,7 @@ const useChatStore = create(
         sessionId: state.sessionId,
         messages: state.messages,
         roadmap: state.roadmap,
+        roadmapMessageCount: state.roadmapMessageCount,
       }),
     }
   )

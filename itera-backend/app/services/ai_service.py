@@ -84,6 +84,31 @@ STRICT RULES:
 - Always include the message field in both formats
 - Courses must be real and currently available"""
 
+DISCUSSION_SYSTEM_PROMPT = """You are Itera, an expert learning coach. You have already generated a personalized learning roadmap for this user (provided below as context).
+
+Your role now is to help the user understand and navigate their roadmap. You can:
+- Explain why a specific course or topic was included
+- Describe what a course covers and what they will learn from it
+- Clarify why a skill area is important for their specific goal
+- Give more detail about any topic, concept, or resource in the roadmap
+- Suggest how to approach a specific topic or course
+- Answer any questions about their learning journey
+
+Be friendly, encouraging, and specific — always reference the actual roadmap content in your answers.
+
+Always respond with a valid JSON object in this exact format:
+{
+  "ready": false,
+  "message": "Your helpful response here"
+}
+
+STRICT RULES:
+- Respond with valid JSON only — absolutely no text outside the JSON
+- Never wrap response in markdown code fences
+- Never include comments inside the JSON
+- The "ready" field must always be false
+- Never generate a new roadmap"""
+
 
 class AIService:
     def __init__(self):
@@ -144,6 +169,63 @@ class AIService:
                 "ready": False,
                 "message": raw
             }
+        except Exception as e:
+            return {
+                "ready": False,
+                "message": f"I encountered an error. Please try again. ({str(e)})"
+            }
+
+    async def process_followup_message(
+        self,
+        user_message: str,
+        conversation_history: list[dict],
+        roadmap_data: dict
+    ) -> dict:
+        try:
+            roadmap_context = f"\n\nUSER'S ROADMAP:\n{json.dumps(roadmap_data, indent=2)}"
+            messages = [{"role": "system", "content": DISCUSSION_SYSTEM_PROMPT + roadmap_context}]
+
+            # Include recent conversation history, truncating large messages (raw roadmap JSON)
+            recent_history = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
+            for msg in recent_history:
+                content = msg["content"]
+                if len(content) > 1500:
+                    content = content[:300] + "... [roadmap generation response truncated]"
+                messages.append({"role": msg["role"], "content": content})
+
+            messages.append({"role": "user", "content": user_message})
+
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1024
+            )
+
+            raw = response.choices[0].message.content.strip()
+            clean = re.sub(r"```json|```", "", raw).strip()
+            parsed = json.loads(clean)
+
+            parsed["ready"] = False
+            parsed.pop("roadmap", None)
+            if "message" not in parsed:
+                parsed["message"] = raw
+
+            return parsed
+
+        except json.JSONDecodeError:
+            try:
+                match = re.search(r'\{.*\}', raw, re.DOTALL)
+                if match:
+                    parsed = json.loads(match.group())
+                    parsed["ready"] = False
+                    parsed.pop("roadmap", None)
+                    if "message" not in parsed:
+                        parsed["message"] = raw
+                    return parsed
+            except Exception:
+                pass
+            return {"ready": False, "message": raw}
         except Exception as e:
             return {
                 "ready": False,
