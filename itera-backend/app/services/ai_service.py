@@ -232,6 +232,127 @@ class AIService:
                 "message": f"I encountered an error. Please try again. ({str(e)})"
             }
 
+    async def explain_topic(
+        self,
+        topic_name: str,
+        topic_description: str,
+        why_relevant: str,
+        goal: str
+    ) -> str:
+        """Explain a roadmap topic in beginner-friendly terms (plain text)."""
+        try:
+            user_prompt = (
+                f'My learning goal is: "{goal}"\n\n'
+                f'Please explain the topic "{topic_name}" in simple, beginner-friendly terms.\n'
+                f'Topic description: {topic_description}\n'
+                f'Why it\'s relevant: {why_relevant}\n\n'
+                f'Keep your explanation to 150-250 words. Use real-world analogies where helpful. '
+                f'Be encouraging and connect it directly to my goal.'
+            )
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are Itera, a friendly and encouraging learning coach. "
+                            "Explain technical concepts in simple, jargon-free language. "
+                            "Use real-world analogies. Be motivating and concise. "
+                            "Respond with plain text only — no JSON, no markdown headers."
+                        )
+                    },
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7,
+                max_tokens=512
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            return f"Unable to generate an explanation right now. Please try again. ({str(e)})"
+
+    async def generate_study_schedule(
+        self,
+        roadmap: dict,
+        daily_hours: float,
+        study_days: list
+    ) -> dict:
+        """Generate a structured day-by-day study schedule from a roadmap."""
+        try:
+            roadmap_summary = json.dumps(roadmap, indent=2)
+            user_prompt = (
+                f"Generate a realistic day-by-day study schedule for this learning roadmap.\n\n"
+                f"STUDY PREFERENCES:\n"
+                f"- Daily study hours: {daily_hours} hours per session\n"
+                f"- Study days: {', '.join(study_days)}\n\n"
+                f"ROADMAP:\n{roadmap_summary}\n\n"
+                f"Rules:\n"
+                f"1. Each day total_hours must not exceed {daily_hours}\n"
+                f"2. Progress from foundational to advanced topics\n"
+                f"3. Split topics across days when needed\n"
+                f"4. Cover ALL topics across the full schedule\n\n"
+                f'Respond with ONLY valid JSON (no markdown): {{"total_study_days": <int>, "schedule": ['
+                f'{{"day_number": 1, "topics": [{{"skill_area": "Area", "topic": "Topic", '
+                f'"hours": 1.5, "activity": "What to do"}}], "total_hours": 1.5, "summary": "Day summary"}}]}}'
+            )
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a study schedule planner. Respond with valid JSON only. No markdown fences."},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                max_tokens=4096
+            )
+            raw = response.choices[0].message.content.strip()
+            clean = re.sub(r"```json|```", "", raw).strip()
+            return json.loads(clean)
+        except Exception:
+            return {"total_study_days": 0, "schedule": []}
+
+    async def generate_adapted_roadmap(
+        self,
+        original_roadmap: dict,
+        completed_topic_keys: list,
+        goal: str
+    ) -> dict:
+        """Generate an updated roadmap that removes completed topics and recalculates hours."""
+        try:
+            completed_str = "\n".join(f"- {k}" for k in completed_topic_keys) or "None"
+            roadmap_str = json.dumps(original_roadmap, indent=2)
+            prompt = (
+                f"Update this learning roadmap by removing completed topics.\n\n"
+                f"GOAL: {goal}\n\n"
+                f"COMPLETED TOPICS (format: 'skill_area_name::topic_name'):\n{completed_str}\n\n"
+                f"ORIGINAL ROADMAP:\n{roadmap_str}\n\n"
+                f"Instructions:\n"
+                f"1. Remove every completed topic from its skill area\n"
+                f"2. Remove skill areas where ALL topics are completed\n"
+                f"3. Recalculate total_estimated_hours = sum of all remaining topic hours\n"
+                f"4. Recalculate estimated_weeks = ceil(total_hours / weekly_hours)\n"
+                f"5. Keep all remaining topics, descriptions, and courses exactly as-is\n\n"
+                f'Return valid JSON only: {{"ready": true, "message": "Encouraging update message", '
+                f'"roadmap": {{"goal": "{goal}", "total_estimated_hours": <int>, '
+                f'"weekly_hours": {original_roadmap.get("weekly_hours", 10)}, '
+                f'"estimated_weeks": <int>, "skill_areas": [...]}}}}'
+            )
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a roadmap adapter. Return valid JSON only. No text outside JSON. No markdown."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=4096
+            )
+            raw = response.choices[0].message.content.strip()
+            clean = re.sub(r"```json|```", "", raw).strip()
+            parsed = json.loads(clean)
+            if "ready" not in parsed:
+                parsed["ready"] = True
+            return parsed
+        except Exception as e:
+            return {"ready": False, "message": f"Error generating updated roadmap: {str(e)}"}
+
     async def test_connection(self) -> tuple[bool, str]:
         try:
             response = await self.client.chat.completions.create(

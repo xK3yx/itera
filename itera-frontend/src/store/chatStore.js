@@ -78,6 +78,8 @@ const useChatStore = create(
         })
       },
 
+      updateRoadmap: (newRoadmap) => set({ roadmap: newRoadmap }),
+
       clearSession: () => {
         set({ sessionId: null, messages: [], roadmap: null, roadmapMessageCount: null, error: null })
       },

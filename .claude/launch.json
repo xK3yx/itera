@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "itera-backend",
+      "runtimeExecutable": "itera-backend/.venv/Scripts/uvicorn",
+      "runtimeArgs": ["app.main:app", "--reload", "--port", "8000", "--app-dir", "itera-backend"],
+      "port": 8000
+    },
+    {
+      "name": "itera-frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["itera-frontend/node_modules/vite/bin/vite.js", "itera-frontend", "--port", "5173"],
+      "port": 5173
+    }
+  ]
+}

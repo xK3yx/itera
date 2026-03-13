@@ -1,5 +1,10 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
+
+# Resolve .env relative to this file so the app loads correctly
+# regardless of which directory uvicorn is launched from
+_ENV_FILE = str(Path(__file__).parent.parent / ".env")
 
 
 class Settings(BaseSettings):
@@ -23,7 +28,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 1440
 
     class Config:
-        env_file = ".env"
+        env_file = _ENV_FILE
         extra = "allow"
 
 

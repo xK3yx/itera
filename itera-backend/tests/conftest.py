@@ -12,6 +12,7 @@ import app.models.roadmap as roadmap_model
 import app.models.user as user_model
 import app.models.session as session_model
 import app.models.message as message_model
+import app.models.study_schedule as study_schedule_model  # registers StudySchedule with Base
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

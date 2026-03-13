@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Itera — Application Flowchart</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      padding: 40px 24px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    header .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 10px 20px;
+      margin-bottom: 20px;
+    }
+
+    .logo {
+      width: 32px; height: 32px;
+      background: #2563eb;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 16px; color: #fff;
+    }
+
+    .app-name { font-weight: 700; font-size: 18px; color: #f1f5f9; }
+    .app-sub  { font-size: 13px; color: #64748b; }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 36px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .diagram-wrapper {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 1400px;
+      margin: 0 auto;
+      overflow-x: auto;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    .mermaid svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 32px;
+      color: #475569;
+      font-size: 12px;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-secondary { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; }
+
+    @media print {
+      body { background: #fff; color: #000; padding: 20px; }
+      .diagram-wrapper { border: 1px solid #e2e8f0; background: #fff; }
+      .actions { display: none; }
+      header .badge { background: #f8fafc; border-color: #e2e8f0; }
+      h1 { color: #0f172a; }
+      .subtitle { color: #64748b; }
+      .legend-item { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
+      footer { color: #94a3b8; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="badge">
+      <div class="logo">I</div>
+      <div>
+        <div class="app-name">Itera</div>
+        <div class="app-sub">AI Learning Roadmap Generator</div>
+      </div>
+    </div>
+    <h1>Application Flowchart</h1>
+    <p class="subtitle">Full-stack flow — FastAPI · PostgreSQL · Redis · Groq LLaMA 3.3 70B · React 19 · Zustand</p>
+  </header>
+
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:#3b82f6"></div> Frontend Page / UI</div>
+    <div class="legend-item"><div class="dot" style="background:#7c3aed"></div> API Endpoint</div>
+    <div class="legend-item"><div class="dot" style="background:#059669"></div> AI Service (Groq)</div>
+    <div class="legend-item"><div class="dot" style="background:#b45309"></div> Database / Cache</div>
+    <div class="legend-item"><div class="dot" style="background:#0891b2"></div> State (Zustand Store)</div>
+    <div class="legend-item"><div class="dot" style="background:#1e293b; border:1px solid #64748b"></div> Decision</div>
+  </div>
+
+  <div class="diagram-wrapper">
+    <div class="mermaid">
+flowchart TD
+    A([User opens app]) --> B{Token in\nlocalStorage?}
+    B -- No --> C[/Login or Register page/]
+    B -- Yes --> M[/Chat page/]
+
+    C --> D{Action}
+    D -- Register --> E[POST /auth/register\nHash password · Create user · Return JWT]
+    D -- Login --> F[POST /auth/login\nVerify password · Return JWT]
+    E --> G[Store token + user\nin authStore + localStorage]
+    F --> G
+    G --> M
+
+    M --> H{sessionId\nin store?}
+    H -- No --> I[POST /chat/start\nCreate Session row · status=active]
+    I --> J[Store sessionId\nin chatStore]
+    H -- Yes --> J
+    J --> K[/Chat UI ready/]
+
+    K --> L[User types message\nand hits Send]
+    L --> N[Optimistically append\nuser bubble · isTyping=true]
+    N --> O[POST /chat/:id/message\n+ JWT header]
+
+    O --> P{JWT valid\n& user active?}
+    P -- No --> Q[401 → redirect to /login]
+    P -- Yes --> R{session.status?}
+
+    R -- active --> S[process_message\nSYSTEM_PROMPT]
+    R -- completed --> T[Fetch Roadmap from DB\nbuild roadmap_context]
+    T --> U[process_followup_message\nDISCUSSION_SYSTEM_PROMPT\n+ roadmap JSON injected]
+
+    S --> V[Build messages array\nsystem + history + new msg]
+    U --> V
+    V --> W[Groq API · LLaMA 3.3 70B]
+    W --> X[Strip markdown fences\nJSON.parse response]
+    X --> Y{Parse OK?}
+    Y -- No --> Z[Regex fallback extract]
+    Z --> AA{Extract OK?}
+    AA -- No --> AB[Return error · ready=false]
+    AA -- Yes --> AC[Return parsed dict]
+    Y -- Yes --> AC
+
+    AC --> AD{Which mode?}
+
+    AD -- Discussion mode --> AE[Force ready=false\nStrip roadmap field]
+    AE --> AF[Save user + AI msgs to DB]
+    AF --> AG[Return message only]
+
+    AD -- Conversation mode --> AH{ready?}
+    AH -- false\nstill gathering info --> AI[Save user + AI msgs to DB]
+    AI --> AJ[Return message only]
+    AH -- true\nroadmap ready --> AK[Save msgs to DB\nUpsert Roadmap JSONB\nstatus=completed]
+    AK --> AL[Return message\n+ full roadmap JSON]
+
+    AG --> AM[Append AI bubble\nisTyping=false]
+    AJ --> AM
+    AL --> AN[Append AI bubble\nSet roadmap in store\nSet roadmapMessageCount]
+
+    AN --> AO[/RoadmapView renders\ninline between messages/]
+    AM --> AP[/Follow-up bubbles render\nbelow RoadmapView/]
+    AO --> AP
+
+    K --> AQ[User clicks History]
+    AQ --> AR[GET /roadmap/ · All sessions]
+    AR --> AS[/HistoryPanel/]
+    AS --> AT{User action}
+    AT -- Load --> AU[GET /chat/:id/history]
+    AU --> AV[loadFromHistory\nroadmapMessageCount=msgs.length]
+    AV --> K
+    AT -- Delete --> AW[DELETE /chat/:id\nCascade delete]
+    AW --> AR
+
+    K --> AX[User clicks New Session]
+    AX --> AY[clearSession · reset store]
+    AY --> I
+
+    O -.->|get_conversation_history| AZ[(Redis Cache · 1hr TTL)]
+    AZ -.->|cache miss| BA[(PostgreSQL)]
+    AK -.->|invalidate cache| AZ
+
+    classDef page fill:#3b82f6,color:#fff,stroke:none
+    classDef api fill:#7c3aed,color:#fff,stroke:none
+    classDef ai fill:#059669,color:#fff,stroke:none
+    classDef db fill:#b45309,color:#fff,stroke:none
+    classDef store fill:#0891b2,color:#fff,stroke:none
+    classDef decision fill:#1e293b,color:#e2e8f0,stroke:#64748b
+
+    class C,M,K,AO,AP,AS page
+    class E,F,I,O,AR,AU,AW api
+    class S,U,V,W,X,AC ai
+    class BA,AZ db
+    class G,J,N,AM,AN,AV,AY store
+    class B,D,H,P,R,Y,AA,AD,AH,AT decision
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="window.print()">🖨️ Save as PDF</button>
+    <button class="btn btn-secondary" onclick="saveSVG()">⬇️ Download SVG</button>
+  </div>
+
+  <footer>
+    <p>Generated March 2026 · Itera v1.0 · FastAPI + React</p>
+  </footer>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        background: '#1e293b',
+        primaryColor: '#3b82f6',
+        primaryTextColor: '#f1f5f9',
+        primaryBorderColor: '#2563eb',
+        lineColor: '#94a3b8',
+        secondaryColor: '#7c3aed',
+        tertiaryColor: '#1e293b',
+        nodeBorder: '#475569',
+        clusterBkg: '#0f172a',
+        titleColor: '#f1f5f9',
+        edgeLabelBackground: '#1e293b',
+        fontSize: '13px'
+      },
+      flowchart: {
+        curve: 'basis',
+        padding: 20,
+        nodeSpacing: 50,
+        rankSpacing: 60,
+        useMaxWidth: true
+      }
+    });
+
+    function saveSVG() {
+      const svg = document.querySelector('.mermaid svg');
+      if (!svg) return alert('Diagram not rendered yet, please wait a moment.');
+      const serializer = new XMLSerializer();
+      const svgStr = serializer.serializeToString(svg);
+      const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'itera-flowchart.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import useThemeStore from '../store/themeStore'
 import MessageBubble from '../components/MessageBubble'
 import TypingIndicator from '../components/TypingIndicator'
 import RoadmapView from '../components/RoadmapView'
+import StudyCoach from '../components/StudyCoach'
 import HistoryPanel from '../components/HistoryPanel'
 
 export default function Chat() {
@@ -142,7 +143,12 @@ export default function Chat() {
             {messages.slice(0, roadmapMessageCount).map((msg) => (
               <MessageBubble key={msg.id} message={msg} />
             ))}
-            {roadmap && <RoadmapView roadmap={roadmap} />}
+            {roadmap && (
+              <>
+                <RoadmapView roadmap={roadmap} sessionId={sessionId} />
+                <StudyCoach sessionId={sessionId} />
+              </>
+            )}
             {messages.slice(roadmapMessageCount).map((msg) => (
               <MessageBubble key={msg.id} message={msg} />
             ))}

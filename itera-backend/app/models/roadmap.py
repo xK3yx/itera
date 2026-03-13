@@ -16,6 +16,7 @@ class Roadmap(Base):
     weekly_hours = Column(Integer, nullable=True)
     estimated_weeks = Column(Integer, nullable=True)
     skill_areas = Column(JSONB, nullable=False)  # Full structured roadmap stored as JSON
+    completed_topics = Column(JSONB, nullable=True)  # List of completed topic keys
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

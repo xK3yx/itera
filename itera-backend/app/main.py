@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routers import auth, chat, courses, roadmap
+from app.routers import auth, chat, courses, roadmap, explain, schedule
 
 settings = get_settings()
 
@@ -31,6 +31,8 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(courses.router)
 app.include_router(roadmap.router)
+app.include_router(explain.router)
+app.include_router(schedule.router)
 
 
 @app.get("/health")
