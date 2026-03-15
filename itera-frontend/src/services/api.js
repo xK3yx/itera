@@ -25,4 +25,12 @@ api.interceptors.response.use(
   }
 )
 
+export const uploadFile = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/chat/upload-file', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
 export default api

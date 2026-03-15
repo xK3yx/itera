@@ -1,7 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from uuid import UUID
+import io
+
+try:
+    from pypdf import PdfReader as _PdfReader
+except ImportError:
+    _PdfReader = None
+
+try:
+    from docx import Document as _DocxDocument
+except ImportError:
+    _DocxDocument = None
+
+try:
+    from openpyxl import load_workbook as _load_workbook
+except ImportError:
+    _load_workbook = None
+
 from app.database import get_db
 from app.models.user import User
 from app.models.session import Session
@@ -216,3 +233,88 @@ async def delete_session(
     await db.commit()
 
     return {"message": "Session deleted successfully"}
+
+
+@router.post("/upload-file")
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Extract text from an uploaded file (PDF, Word, Excel, or text)."""
+    MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File too large. Maximum size is 10 MB."
+        )
+
+    filename = file.filename or ""
+    name_lower = filename.lower()
+    extracted_text = ""
+
+    try:
+        if name_lower.endswith(".pdf"):
+            if _PdfReader is None:
+                raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="PDF support not installed on server.")
+            reader = _PdfReader(io.BytesIO(content))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            extracted_text = "\n\n".join(p for p in pages if p.strip())
+
+        elif name_lower.endswith(".docx"):
+            if _DocxDocument is None:
+                raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Word document support not installed on server.")
+            doc = _DocxDocument(io.BytesIO(content))
+            extracted_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+        elif name_lower.endswith((".xlsx", ".xls")):
+            if _load_workbook is None:
+                raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Excel support not installed on server.")
+            wb = _load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            rows = []
+            for sheet in wb.worksheets:
+                rows.append(f"[Sheet: {sheet.title}]")
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = "\t".join(str(c) if c is not None else "" for c in row)
+                    if row_text.strip():
+                        rows.append(row_text)
+            extracted_text = "\n".join(rows)
+
+        elif name_lower.endswith((".txt", ".md", ".csv", ".json")):
+            try:
+                extracted_text = content.decode("utf-8")
+            except UnicodeDecodeError:
+                extracted_text = content.decode("latin-1")
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Unsupported file type. Supported: PDF, Word (.docx), Excel (.xlsx/.xls), text (.txt, .md, .csv, .json)"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not extract text from file: {str(e)}"
+        )
+
+    if not extracted_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No readable text could be extracted from this file."
+        )
+
+    MAX_CHARS = 50_000
+    truncated = False
+    if len(extracted_text) > MAX_CHARS:
+        extracted_text = extracted_text[:MAX_CHARS]
+        truncated = True
+
+    return {
+        "filename": filename,
+        "content": extracted_text,
+        "size": len(content),
+        "truncated": truncated,
+    }

@@ -2,3 +2,23 @@
 **/.env
 **/__pycache__/
 *.pyc
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Claude Code internal workspace
+.claude/
+
+# Node
+node_modules/
+itera-backend/package-lock.json
+
+# Build outputs
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
