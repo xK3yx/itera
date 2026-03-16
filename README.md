@@ -4,18 +4,16 @@ Itera is an AI-powered personalized learning roadmap generator. Tell it your bac
 
 ## Features
 
-- **AI conversation** — multi-turn chat to understand your background, skills, and goals
-- **File upload** — attach a CV, PDF, Word doc, Excel sheet, or text file so the AI can read your background without you having to type it out
-- **Voice input** — click the microphone to dictate your message using the Web Speech API built into modern browsers
-- **Personalized roadmap** — skill areas, topics, time estimates, and course recommendations
-- **Explain any topic** — click "Explain this" on any topic for a beginner-friendly AI breakdown
-- **Progress tracking** — check off completed topics with per-area progress bars and an overall completion percentage
-- **Daily Study Coach** — set your study hours and days, get a day-by-day AI-generated schedule with today's plan
-- **Adaptive roadmap** — regenerate your roadmap to skip completed topics and recalculate remaining time
-- **Post-roadmap Q&A** — ask the AI anything about your roadmap after it's generated
-- **Session history** — save and reload past roadmaps
-- **Dark / Light / Auto theme**
-- **JWT authentication**
+-  **AI conversation** - multi-turn chat to understand your background, skills, and goals
+-  **Personalized roadmap** - skill areas, topics, time estimates, and course recommendations
+-  **Explain any topic** - click "Explain this" on any topic for a beginner-friendly AI breakdown
+-  **Progress tracking** - check off completed topics with per-area progress bars and an overall completion %
+-  **Daily Study Coach** - set your study hours and days, get a day-by-day AI-generated schedule with today's plan
+-  **Adaptive roadmap** - regenerate your roadmap to skip completed topics and recalculate remaining time
+-  **Post-roadmap Q&A** - ask the AI anything about your roadmap after it's generated
+-  **Session history** - save and reload past roadmaps
+-  **Dark / Light / Auto theme**
+-  **JWT authentication**
 
 ## Tech Stack
 
