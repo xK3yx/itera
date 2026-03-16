@@ -1,19 +1,21 @@
-# Itera 🗺
+# Itera
 
 Itera is an AI-powered personalized learning roadmap generator. Tell it your background and goal, and it builds you a custom curriculum with curated course recommendations — then helps you stay on track with progress tracking, daily planning, and adaptive updates.
 
 ## Features
 
-- 🤖 **AI conversation** — multi-turn chat to understand your background, skills, and goals
-- 🗺 **Personalized roadmap** — skill areas, topics, time estimates, and course recommendations
-- 💡 **Explain any topic** — click "Explain this" on any topic for a beginner-friendly AI breakdown
-- ✅ **Progress tracking** — check off completed topics with per-area progress bars and an overall completion %
-- 📅 **Daily Study Coach** — set your study hours and days, get a day-by-day AI-generated schedule with today's plan
-- 🔄 **Adaptive roadmap** — regenerate your roadmap to skip completed topics and recalculate remaining time
-- 💬 **Post-roadmap Q&A** — ask the AI anything about your roadmap after it's generated
-- 💾 **Session history** — save and reload past roadmaps
-- 🌙 **Dark / Light / Auto theme**
-- 🔐 **JWT authentication**
+- **AI conversation** — multi-turn chat to understand your background, skills, and goals
+- **File upload** — attach a CV, PDF, Word doc, Excel sheet, or text file so the AI can read your background without you having to type it out
+- **Voice input** — click the microphone to dictate your message using the Web Speech API built into modern browsers
+- **Personalized roadmap** — skill areas, topics, time estimates, and course recommendations
+- **Explain any topic** — click "Explain this" on any topic for a beginner-friendly AI breakdown
+- **Progress tracking** — check off completed topics with per-area progress bars and an overall completion percentage
+- **Daily Study Coach** — set your study hours and days, get a day-by-day AI-generated schedule with today's plan
+- **Adaptive roadmap** — regenerate your roadmap to skip completed topics and recalculate remaining time
+- **Post-roadmap Q&A** — ask the AI anything about your roadmap after it's generated
+- **Session history** — save and reload past roadmaps
+- **Dark / Light / Auto theme**
+- **JWT authentication**
 
 ## Tech Stack
 
@@ -33,31 +35,35 @@ Itera is an AI-powered personalized learning roadmap generator. Tell it your bac
 - Docker Desktop
 - A [Groq API key](https://console.groq.com) (free)
 
-### Run the app
+### Run with Docker
 
 ```bash
 git clone https://github.com/xK3yx/itera.git
 cd itera/itera-backend
 
-# Copy the example env file and add your Groq API key
+# Copy the example env file and fill in your Groq API key
 cp .env.example .env
-# Edit .env — the only required change is GROQ_API_KEY
 
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 Then open **http://localhost** in your browser.
 
-> Migrations run automatically on startup. No manual step needed.
+Migrations run automatically on startup — no manual step needed.
 
-### Running locally (without Docker)
+### Run locally (without Docker)
+
+You'll need PostgreSQL running separately. Update `DATABASE_URL` in `.env` to point to `localhost`.
 
 **Backend**
 ```bash
 cd itera-backend
-python -m venv .venv && .venv/Scripts/activate  # Windows
+python -m venv .venv
+.venv/Scripts/activate        # Windows
+# source .venv/bin/activate   # macOS / Linux
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000 --app-dir itera-backend
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
 ```
 
 **Frontend**
@@ -66,6 +72,8 @@ cd itera-frontend
 npm install
 npm run dev
 ```
+
+Then open **http://localhost:5173**.
 
 ### Tests
 
@@ -85,33 +93,34 @@ npm test
 itera/
 ├── itera-backend/
 │   ├── app/
-│   │   ├── routers/            # API endpoints
-│   │   │   ├── auth.py         # Register / Login
-│   │   │   ├── chat.py         # Session messaging
-│   │   │   ├── roadmap.py      # Roadmap + progress + adapt
+│   │   ├── routers/
+│   │   │   ├── auth.py         # Register / login
+│   │   │   ├── chat.py         # Session messaging + file upload
+│   │   │   ├── roadmap.py      # Roadmap, progress, adapt
 │   │   │   ├── explain.py      # Topic explanation
 │   │   │   └── schedule.py     # Study schedule
-│   │   ├── models/             # SQLAlchemy models
-│   │   │   ├── roadmap.py      # Roadmap (incl. completed_topics)
+│   │   ├── models/
+│   │   │   ├── roadmap.py
 │   │   │   └── study_schedule.py
 │   │   ├── services/
 │   │   │   └── ai_service.py   # All Groq AI methods
 │   │   └── schemas/            # Pydantic request/response models
 │   ├── alembic/versions/       # Database migrations
-│   ├── tests/                  # Pytest test suite
+│   ├── tests/
 │   └── docker-compose.yml
 └── itera-frontend/
     ├── src/
     │   ├── pages/              # Login, Register, Chat
     │   ├── components/
-    │   │   ├── RoadmapView.jsx # Roadmap + checkboxes + progress bars
-    │   │   └── StudyCoach.jsx  # Daily study schedule UI
+    │   │   ├── MessageBubble.jsx
+    │   │   ├── RoadmapView.jsx
+    │   │   └── StudyCoach.jsx
     │   ├── store/
-    │   │   ├── chatStore.js    # Session & message state
-    │   │   ├── progressStore.js# Topic completion state
-    │   │   └── scheduleStore.js# Study schedule state
+    │   │   ├── chatStore.js
+    │   │   ├── progressStore.js
+    │   │   └── scheduleStore.js
     │   ├── services/           # Axios API client
-    │   └── tests/              # Vitest test suite
+    │   └── tests/
     └── Dockerfile
 ```
 
@@ -128,17 +137,18 @@ itera/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/v1/chat/start` | Start new session |
-| POST | `/api/v1/chat/{id}/message` | Send message (generates roadmap or discusses it) |
+| POST | `/api/v1/chat/{id}/message` | Send message |
 | GET | `/api/v1/chat/{id}/history` | Get message history |
 | DELETE | `/api/v1/chat/{id}` | Delete session |
+| POST | `/api/v1/chat/upload-file` | Extract text from an uploaded file (PDF, Word, Excel, txt) |
 
 ### Roadmap
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/roadmap/` | Get all roadmaps |
+| GET | `/api/v1/roadmap/` | List all roadmaps |
 | GET | `/api/v1/roadmap/{id}` | Get roadmap by session |
 | PATCH | `/api/v1/roadmap/{id}/progress` | Save completed topic keys |
-| POST | `/api/v1/roadmap/{id}/adapt` | Regenerate roadmap skipping completed topics |
+| POST | `/api/v1/roadmap/{id}/adapt` | Regenerate skipping completed topics |
 
 ### Explain
 | Method | Endpoint | Description |
@@ -163,10 +173,10 @@ SECRET_KEY=your-secret-key
 POSTGRES_USER=itera_user
 POSTGRES_PASSWORD=itera_password
 POSTGRES_DB=itera_db
-DATABASE_URL=postgresql+asyncpg://itera_user:itera_password@db:5432/itera_db
+DATABASE_URL=postgresql+asyncpg://itera_user:itera_password@localhost:5432/itera_db
 
-# Redis (optional — falls back to DB gracefully)
-REDIS_URL=redis://redis:6379/0
+# Redis (optional — falls back to DB if unavailable)
+REDIS_URL=redis://localhost:6379/0
 
 # Groq AI
 GROQ_API_KEY=your-groq-api-key
@@ -177,18 +187,20 @@ JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=1440
 ```
 
+Note: when running with Docker, `DATABASE_URL` and `REDIS_URL` are overridden automatically by `docker-compose.yml` to use the correct internal service hostnames.
+
 ## Docker Commands
 
 ```bash
 # Start everything (builds images, runs migrations automatically)
-docker-compose up --build -d
+docker compose up --build -d
 
 # View logs
-docker-compose logs -f api
+docker compose logs -f api
 
 # Stop
-docker-compose down
+docker compose down
 
-# Full reset (wipes database)
-docker-compose down -v
+# Full reset (wipes the database volume)
+docker compose down -v
 ```
