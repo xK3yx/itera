@@ -1,14 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.routers import auth, chat, courses, roadmap, explain, schedule
+from app.routers import auth, courses, generated_roadmaps, users, roadmap_progress
 
 settings = get_settings()
 
 app = FastAPI(
     title="Itera API",
     description="Personalized AI learning roadmap generator",
-    version="1.0.0",
+    version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -28,11 +28,10 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(chat.router)
 app.include_router(courses.router)
-app.include_router(roadmap.router)
-app.include_router(explain.router)
-app.include_router(schedule.router)
+app.include_router(generated_roadmaps.router)
+app.include_router(users.router)
+app.include_router(roadmap_progress.router)
 
 
 @app.get("/health")
@@ -40,12 +39,10 @@ async def health_check():
     return {
         "status": "healthy",
         "app": settings.app_name,
-        "version": "1.0.0"
+        "version": "3.0.0"
     }
 
 
 @app.get("/")
 async def root():
-    return {"message": f"Welcome to {settings.app_name} API"}
-
-
+    return {"message": f"Welcome to {settings.app_name} API v3"}

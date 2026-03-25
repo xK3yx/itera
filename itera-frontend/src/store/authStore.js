@@ -4,7 +4,7 @@ import api, { setAuthToken } from '../services/api'
 
 const useAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isLoading: false,
@@ -13,7 +13,7 @@ const useAuthStore = create(
       register: async (email, username, password) => {
         set({ isLoading: true, error: null })
         try {
-          const res = await api.post('/auth/register', { email, username, password })
+          const res = await api.post('/api/v1/auth/register', { email, username, password })
           setAuthToken(res.data.access_token)
           set({ user: res.data.user, token: res.data.access_token, isLoading: false })
           return { success: true }
@@ -27,7 +27,7 @@ const useAuthStore = create(
       login: async (email, password) => {
         set({ isLoading: true, error: null })
         try {
-          const res = await api.post('/auth/login', { email, password })
+          const res = await api.post('/api/v1/auth/login', { email, password })
           setAuthToken(res.data.access_token)
           set({ user: res.data.user, token: res.data.access_token, isLoading: false })
           return { success: true }
@@ -36,6 +36,10 @@ const useAuthStore = create(
           set({ error: message, isLoading: false })
           return { success: false, error: message }
         }
+      },
+
+      updateUser: (userData) => {
+        set({ user: { ...get().user, ...userData } })
       },
 
       logout: () => {

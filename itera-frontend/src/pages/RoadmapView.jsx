@@ -1,0 +1,396 @@
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import {
+  getGeneratedRoadmap,
+  deleteGeneratedRoadmap,
+  enrollInRoadmap,
+  getEnrollment,
+  logProgress,
+} from '../services/api'
+
+const PHASE_COLORS = ['blue', 'purple', 'green', 'orange', 'pink']
+
+const phaseStyle = (idx) => {
+  const colors = [
+    'border-blue-500 bg-blue-50 dark:bg-blue-900/10',
+    'border-purple-500 bg-purple-50 dark:bg-purple-900/10',
+    'border-green-500 bg-green-50 dark:bg-green-900/10',
+    'border-orange-500 bg-orange-50 dark:bg-orange-900/10',
+    'border-pink-500 bg-pink-50 dark:bg-pink-900/10',
+  ]
+  return colors[idx % colors.length]
+}
+
+const phaseNumStyle = (idx) => {
+  const colors = [
+    'bg-blue-600', 'bg-purple-600', 'bg-green-600', 'bg-orange-500', 'bg-pink-600',
+  ]
+  return colors[idx % colors.length]
+}
+
+const platformStyle = (platform) => {
+  const map = {
+    YouTube: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    Coursera: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    Udemy: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  }
+  return map[platform] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+}
+
+function LogProgressModal({ topicId, topicTitle, roadmapId, onClose, onAccepted }) {
+  const [text, setText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setResult(null)
+    try {
+      const res = await logProgress(roadmapId, topicId, text)
+      setResult(res.data)
+      if (res.data.accepted) {
+        setTimeout(() => {
+          onAccepted(res.data)
+          onClose()
+        }, 1500)
+      }
+    } catch (err) {
+      setResult({ accepted: false, reason: err.response?.data?.detail || 'Submission failed.' })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Log Progress</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Topic: <strong className="text-gray-700 dark:text-gray-300">{topicTitle}</strong>
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <textarea
+            value={text} onChange={(e) => setText(e.target.value)}
+            rows={5} minLength={20} maxLength={2000} required
+            placeholder="Describe specifically what you learned: concepts, tools, techniques, how you applied them..."
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          />
+          <div className="flex items-center justify-between">
+            <span className={`text-xs ${text.length < 20 ? 'text-red-400' : 'text-gray-400'}`}>
+              {text.length}/2000 (min 20)
+            </span>
+          </div>
+
+          {result && (
+            <div className={`rounded-lg px-4 py-3 text-sm ${result.accepted ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
+              {result.accepted
+                ? `✓ Accepted! Topic marked as complete.`
+                : `✗ ${result.reason}`}
+            </div>
+          )}
+
+          <div className="flex gap-3 justify-end">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+              Cancel
+            </button>
+            <button
+              type="submit" disabled={text.length < 20 || submitting}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+            >
+              {submitting ? 'Submitting...' : 'Submit Log'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function TopicRow({ topic, roadmapId, completedIds, onProgressAccepted }) {
+  const [open, setOpen] = useState(false)
+  const [logOpen, setLogOpen] = useState(false)
+  const isCompleted = completedIds.includes(topic.topic_id)
+
+  return (
+    <div className={`border rounded-lg overflow-hidden ${isCompleted ? 'border-green-200 dark:border-green-800' : 'border-gray-200 dark:border-gray-700'}`}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
+          isCompleted
+            ? 'bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20'
+            : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          {isCompleted && (
+            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</span>
+          )}
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{topic.title}</span>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+          {topic.estimated_hours && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">{topic.estimated_hours}h</span>
+          )}
+          <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 pt-2 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 space-y-3">
+          {topic.description && (
+            <p className="text-sm text-gray-600 dark:text-gray-400">{topic.description}</p>
+          )}
+
+          {topic.resources && topic.resources.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {topic.resources.map((r, i) => (
+                <a
+                  key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium hover:opacity-80 transition-opacity ${platformStyle(r.platform)}`}
+                >
+                  {r.platform} · {r.title.slice(0, 40)}{r.title.length > 40 ? '…' : ''}
+                </a>
+              ))}
+            </div>
+          )}
+
+          {!isCompleted && (
+            <button
+              onClick={() => setLogOpen(true)}
+              className="mt-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition"
+            >
+              Log Progress
+            </button>
+          )}
+        </div>
+      )}
+
+      {logOpen && (
+        <LogProgressModal
+          topicId={topic.topic_id}
+          topicTitle={topic.title}
+          roadmapId={roadmapId}
+          onClose={() => setLogOpen(false)}
+          onAccepted={onProgressAccepted}
+        />
+      )}
+    </div>
+  )
+}
+
+export default function RoadmapView() {
+  const { roadmapId } = useParams()
+  const navigate = useNavigate()
+
+  const [roadmap, setRoadmap] = useState(null)
+  const [enrollment, setEnrollment] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [enrolling, setEnrolling] = useState(false)
+
+  const completedIds = enrollment?.completed_topic_ids || []
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [rmRes, enrRes] = await Promise.all([
+        getGeneratedRoadmap(roadmapId),
+        getEnrollment(roadmapId),
+      ])
+      setRoadmap(rmRes.data.data)
+      setEnrollment(enrRes.data.data)
+    } catch {
+      setError('Could not load roadmap.')
+    } finally {
+      setLoading(false)
+    }
+  }, [roadmapId])
+
+  useEffect(() => { load() }, [load])
+
+  const handleEnroll = async () => {
+    setEnrolling(true)
+    try {
+      const res = await enrollInRoadmap(roadmapId)
+      setEnrollment(res.data.data)
+    } catch {
+      // silent
+    } finally {
+      setEnrolling(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this roadmap? This cannot be undone.')) return
+    setDeleting(true)
+    try {
+      await deleteGeneratedRoadmap(roadmapId)
+      navigate('/recommendations')
+    } catch {
+      setDeleting(false)
+    }
+  }
+
+  const handleProgressAccepted = (data) => {
+    setEnrollment((e) => e ? {
+      ...e,
+      completed_topic_ids: [...(e.completed_topic_ids || []), data.topic_id],
+      total_topics: data.total_topics,
+      progress_pct: Math.round(data.completed_topics / data.total_topics * 100 * 10) / 10,
+    } : e)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent mx-auto mb-3" />
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Loading roadmap...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !roadmap) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">{error || 'Roadmap not found.'}</p>
+          <button onClick={() => navigate('/recommendations')} className="text-blue-500 hover:underline text-sm">
+            ← Back to Recommendations
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const data = roadmap.roadmap_data || {}
+  const phases = data.phases || []
+  const totalTopics = phases.reduce((a, p) => a + p.skill_areas.reduce((b, sa) => b + (sa.topics || []).length, 0), 0)
+  const progressPct = enrollment?.progress_pct || 0
+  const completedCount = completedIds.length
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/recommendations')}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors text-sm"
+            >
+              ← Back
+            </button>
+            <div>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100 leading-tight">{roadmap.title}</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{roadmap.target_role}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleDelete} disabled={deleting}
+            className="px-3 py-1.5 text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 border border-red-200 dark:border-red-800 rounded-lg transition disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
+        {/* Stats + progress */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5 space-y-4">
+          <div className="flex flex-wrap gap-6 text-sm">
+            <div>
+              <span className="text-gray-400 dark:text-gray-500 text-xs">Phases</span>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{phases.length}</p>
+            </div>
+            <div>
+              <span className="text-gray-400 dark:text-gray-500 text-xs">Total Topics</span>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{totalTopics}</p>
+            </div>
+            <div>
+              <span className="text-gray-400 dark:text-gray-500 text-xs">Est. Hours</span>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{Math.round(roadmap.total_estimated_hours || 0)}h</p>
+            </div>
+            {roadmap.hours_per_week && (
+              <div>
+                <span className="text-gray-400 dark:text-gray-500 text-xs">Hours/Week</span>
+                <p className="font-semibold text-gray-800 dark:text-gray-100">{roadmap.hours_per_week}h</p>
+              </div>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {enrollment ? (
+            <div>
+              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                <span>Progress: {completedCount}/{totalTopics} topics</span>
+                <span>{progressPct}%</span>
+              </div>
+              <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all duration-500"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleEnroll} disabled={enrolling}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+            >
+              {enrolling ? 'Enrolling...' : 'Start Roadmap (Enroll)'}
+            </button>
+          )}
+        </div>
+
+        {/* Phases */}
+        {phases.map((phase, pi) => (
+          <div key={pi} className={`rounded-2xl border-l-4 p-5 space-y-4 ${phaseStyle(pi)}`}>
+            <div className="flex items-center gap-3">
+              <span className={`${phaseNumStyle(pi)} text-white text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0`}>
+                {pi + 1}
+              </span>
+              <div>
+                <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">{phase.title}</h2>
+                {phase.description && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{phase.description}</p>
+                )}
+              </div>
+              <div className="ml-auto text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
+                {phase.skill_areas?.reduce((a, sa) => a + (sa.topics || []).length, 0)} topics
+              </div>
+            </div>
+
+            {(phase.skill_areas || []).map((sa, ai) => (
+              <div key={ai} className="space-y-2">
+                <div className="mb-2">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{sa.title}</h3>
+                  {sa.description && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{sa.description}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5 pl-2">
+                  {(sa.topics || []).map((topic, ti) => (
+                    <TopicRow
+                      key={ti}
+                      topic={topic}
+                      roadmapId={roadmapId}
+                      completedIds={completedIds}
+                      onProgressAccepted={handleProgressAccepted}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

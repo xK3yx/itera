@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from uuid import UUID
+from typing import Optional
 
 
 class UserRegister(BaseModel):
@@ -20,6 +21,16 @@ class UserResponse(BaseModel):
     username: str
     is_active: bool
     created_at: datetime
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    education: Optional[str] = None
+    current_role: Optional[str] = None
+    primary_domain: Optional[str] = None
+    experience_years: Optional[int] = None
+    tech_stack: Optional[list[str]] = None
+    profile_completed: bool = False
 
     class Config:
         from_attributes = True

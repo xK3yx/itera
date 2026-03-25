@@ -15,7 +15,7 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     const result = await register(form.email, form.username, form.password)
-    if (result.success) navigate('/chat')
+    if (result.success) navigate('/profile-setup')
   }
 
   return (

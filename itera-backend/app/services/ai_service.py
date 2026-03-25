@@ -1,11 +1,6 @@
-from groq import AsyncGroq
 import json
 import re
-from app.config import get_settings
-
-settings = get_settings()
-
-client = AsyncGroq(api_key=settings.groq_api_key)
+from app.services.llm_client import async_chat_complete, extract_and_parse_json
 
 SYSTEM_PROMPT = """You are Itera, an expert learning coach and curriculum designer.
 Your job is to analyze a user's existing skills and experience, then create a
@@ -111,10 +106,6 @@ STRICT RULES:
 
 
 class AIService:
-    def __init__(self):
-        self.client = client
-        self.model = "llama-3.3-70b-versatile"
-
     async def process_message(
         self,
         user_message: str,
@@ -134,17 +125,12 @@ class AIService:
                 "content": user_message
             })
 
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=4096
-            )
+            raw = await async_chat_complete(messages=messages, temperature=0.7, max_tokens=4096)
 
-            raw = response.choices[0].message.content.strip()
-            clean = re.sub(r"```json|```", "", raw).strip()
-
-            parsed = json.loads(clean)
+            try:
+                parsed = extract_and_parse_json(raw)
+            except (ValueError, json.JSONDecodeError):
+                parsed = {"ready": False, "message": raw}
 
             if "ready" not in parsed:
                 parsed["ready"] = False
@@ -153,22 +139,6 @@ class AIService:
 
             return parsed
 
-        except json.JSONDecodeError:
-            try:
-                match = re.search(r'\{.*\}', raw, re.DOTALL)
-                if match:
-                    parsed = json.loads(match.group())
-                    if "ready" not in parsed:
-                        parsed["ready"] = False
-                    if "message" not in parsed:
-                        parsed["message"] = raw
-                    return parsed
-            except Exception:
-                pass
-            return {
-                "ready": False,
-                "message": raw
-            }
         except Exception as e:
             return {
                 "ready": False,
@@ -195,16 +165,12 @@ class AIService:
 
             messages.append({"role": "user", "content": user_message})
 
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1024
-            )
+            raw = await async_chat_complete(messages=messages, temperature=0.7, max_tokens=1024)
 
-            raw = response.choices[0].message.content.strip()
-            clean = re.sub(r"```json|```", "", raw).strip()
-            parsed = json.loads(clean)
+            try:
+                parsed = extract_and_parse_json(raw)
+            except (ValueError, json.JSONDecodeError):
+                parsed = {"ready": False, "message": raw}
 
             parsed["ready"] = False
             parsed.pop("roadmap", None)
@@ -213,19 +179,6 @@ class AIService:
 
             return parsed
 
-        except json.JSONDecodeError:
-            try:
-                match = re.search(r'\{.*\}', raw, re.DOTALL)
-                if match:
-                    parsed = json.loads(match.group())
-                    parsed["ready"] = False
-                    parsed.pop("roadmap", None)
-                    if "message" not in parsed:
-                        parsed["message"] = raw
-                    return parsed
-            except Exception:
-                pass
-            return {"ready": False, "message": raw}
         except Exception as e:
             return {
                 "ready": False,
@@ -249,8 +202,7 @@ class AIService:
                 f'Keep your explanation to 150-250 words. Use real-world analogies where helpful. '
                 f'Be encouraging and connect it directly to my goal.'
             )
-            response = await self.client.chat.completions.create(
-                model=self.model,
+            raw = await async_chat_complete(
                 messages=[
                     {
                         "role": "system",
@@ -264,9 +216,9 @@ class AIService:
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.7,
-                max_tokens=512
+                max_tokens=512,
             )
-            return response.choices[0].message.content.strip()
+            return raw
         except Exception as e:
             return f"Unable to generate an explanation right now. Please try again. ({str(e)})"
 
@@ -294,18 +246,15 @@ class AIService:
                 f'{{"day_number": 1, "topics": [{{"skill_area": "Area", "topic": "Topic", '
                 f'"hours": 1.5, "activity": "What to do"}}], "total_hours": 1.5, "summary": "Day summary"}}]}}'
             )
-            response = await self.client.chat.completions.create(
-                model=self.model,
+            raw = await async_chat_complete(
                 messages=[
                     {"role": "system", "content": "You are a study schedule planner. Respond with valid JSON only. No markdown fences."},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.3,
-                max_tokens=4096
+                max_tokens=4096,
             )
-            raw = response.choices[0].message.content.strip()
-            clean = re.sub(r"```json|```", "", raw).strip()
-            return json.loads(clean)
+            return extract_and_parse_json(raw)
         except Exception:
             return {"total_study_days": 0, "schedule": []}
 
@@ -335,18 +284,15 @@ class AIService:
                 f'"weekly_hours": {original_roadmap.get("weekly_hours", 10)}, '
                 f'"estimated_weeks": <int>, "skill_areas": [...]}}}}'
             )
-            response = await self.client.chat.completions.create(
-                model=self.model,
+            raw = await async_chat_complete(
                 messages=[
                     {"role": "system", "content": "You are a roadmap adapter. Return valid JSON only. No text outside JSON. No markdown."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.2,
-                max_tokens=4096
+                max_tokens=4096,
             )
-            raw = response.choices[0].message.content.strip()
-            clean = re.sub(r"```json|```", "", raw).strip()
-            parsed = json.loads(clean)
+            parsed = extract_and_parse_json(raw)
             if "ready" not in parsed:
                 parsed["ready"] = True
             return parsed
@@ -355,12 +301,11 @@ class AIService:
 
     async def test_connection(self) -> tuple[bool, str]:
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
+            raw = await async_chat_complete(
                 messages=[{"role": "user", "content": "Say hello in one word."}],
-                max_tokens=10
+                max_tokens=10,
             )
-            return True, response.choices[0].message.content
+            return True, raw
         except Exception as e:
             return False, str(e)
 

@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base
-from app.models import User, Session, Message, Roadmap
+from app.models import User, Session, Message, Roadmap, GeneratedRoadmap, KnowledgeBase, RoadmapEnrollment, TopicProgressLog
 from app.config import get_settings
 
 settings = get_settings()

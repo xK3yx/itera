@@ -1,10 +1,5 @@
-from groq import AsyncGroq
 import json
-import re
-from app.config import get_settings
-
-settings = get_settings()
-client = AsyncGroq(api_key=settings.groq_api_key)
+from app.services.llm_client import async_chat_complete, extract_and_parse_json
 
 COURSE_SEARCH_PROMPT = """You are an expert learning resource curator.
 Your job is to find the best online courses and learning resources for a given topic.
@@ -48,23 +43,19 @@ async def search_courses(
 
 Return exactly {max_results} courses."""
 
-        response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+        raw = await async_chat_complete(
             messages=[
                 {"role": "system", "content": COURSE_SEARCH_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
-            max_tokens=2048
+            max_tokens=2048,
         )
 
-        raw = response.choices[0].message.content.strip()
-        clean = re.sub(r"```json|```", "", raw).strip()
-        parsed = json.loads(clean)
-
+        parsed = extract_and_parse_json(raw)
         return parsed.get("courses", [])
 
-    except json.JSONDecodeError:
+    except (ValueError, json.JSONDecodeError):
         return []
-    except Exception as e:
+    except Exception:
         return []

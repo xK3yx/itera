@@ -19,8 +19,15 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://redis:6379/0"
 
-    # Groq
-    groq_api_key: str
+    # Ollama (primary LLM)
+    ollama_base_url: str = "http://host.docker.internal:11434"
+    ollama_model: str = "qwen2.5:7b"
+
+    # Groq (fallback LLM)
+    groq_api_key: str = ""
+
+    # YouTube
+    youtube_api_key: str = ""
 
     # JWT
     jwt_secret_key: str
