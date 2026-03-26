@@ -120,30 +120,65 @@ async def _generate_topics_for_skill_area(
 # ---------- Step 3: Search real resources per topic ----------
 
 async def _search_topic_resources(topic: dict, include_paid: bool) -> list[dict]:
-    """Search YouTube + Coursera + Udemy for a single topic."""
+    """Search YouTube playlists + Coursera + Udemy for a single topic."""
     settings = get_settings()
     resources = []
     query = topic.get("search_query", topic["title"])
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # YouTube
+        # YouTube — search for PLAYLISTS (full courses) instead of individual videos
         yt_key = settings.youtube_api_key if hasattr(settings, 'youtube_api_key') else getattr(settings, 'YOUTUBE_API_KEY', '')
         if yt_key:
+            # Search query optimised for structured learning content
+            yt_query = f"{query} full course tutorial playlist"
             try:
+                # First: try to find a playlist (structured, multi-part learning)
                 resp = await client.get(
                     "https://www.googleapis.com/youtube/v3/search",
-                    params={"part": "snippet", "q": query, "type": "video", "maxResults": 1, "key": yt_key},
+                    params={
+                        "part": "snippet",
+                        "q": yt_query,
+                        "type": "playlist",
+                        "maxResults": 2,
+                        "key": yt_key,
+                    },
                 )
                 if resp.status_code == 200:
                     items = resp.json().get("items", [])
-                    if items:
-                        vid = items[0]
+                    for item in items[:2]:
+                        playlist_id = item["id"]["playlistId"]
                         resources.append({
-                            "title": vid["snippet"]["title"],
+                            "title": item["snippet"]["title"],
                             "platform": "YouTube",
-                            "url": f"https://www.youtube.com/watch?v={vid['id']['videoId']}",
+                            "url": f"https://www.youtube.com/playlist?list={playlist_id}",
                             "type": "free",
+                            "format": "playlist",
                         })
+
+                # Fallback: if no playlists found, search for long-form videos (>20 min)
+                if not any(r["platform"] == "YouTube" for r in resources):
+                    resp = await client.get(
+                        "https://www.googleapis.com/youtube/v3/search",
+                        params={
+                            "part": "snippet",
+                            "q": f"{query} full course tutorial",
+                            "type": "video",
+                            "videoDuration": "long",  # >20 minutes
+                            "maxResults": 1,
+                            "key": yt_key,
+                        },
+                    )
+                    if resp.status_code == 200:
+                        items = resp.json().get("items", [])
+                        if items:
+                            vid = items[0]
+                            resources.append({
+                                "title": vid["snippet"]["title"],
+                                "platform": "YouTube",
+                                "url": f"https://www.youtube.com/watch?v={vid['id']['videoId']}",
+                                "type": "free",
+                                "format": "video",
+                            })
             except Exception as e:
                 logger.warning("[Resources] YouTube search failed: %s", e)
 

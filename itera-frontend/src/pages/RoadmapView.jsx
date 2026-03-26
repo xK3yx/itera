@@ -37,6 +37,20 @@ const platformStyle = (platform) => {
   return map[platform] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
 
+function ResourceChip({ r }) {
+  const formatLabel = r.format === 'playlist' ? 'Playlist' : r.format === 'video' ? 'Video' : null
+  return (
+    <a
+      href={r.url} target="_blank" rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium hover:opacity-80 transition-opacity ${platformStyle(r.platform)}`}
+    >
+      <span className="font-semibold">{r.platform}</span>
+      {formatLabel && <span className="opacity-60">({formatLabel})</span>}
+      <span className="opacity-80">· {r.title.slice(0, 50)}{r.title.length > 50 ? '...' : ''}</span>
+    </a>
+  )
+}
+
 function LogProgressModal({ topicId, topicTitle, roadmapId, onClose, onAccepted }) {
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -145,18 +159,36 @@ function TopicRow({ topic, roadmapId, completedIds, onProgressAccepted }) {
             <p className="text-sm text-gray-600 dark:text-gray-400">{topic.description}</p>
           )}
 
-          {topic.resources && topic.resources.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {topic.resources.map((r, i) => (
-                <a
-                  key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium hover:opacity-80 transition-opacity ${platformStyle(r.platform)}`}
-                >
-                  {r.platform} · {r.title.slice(0, 40)}{r.title.length > 40 ? '…' : ''}
-                </a>
-              ))}
-            </div>
-          )}
+          {topic.resources && topic.resources.length > 0 && (() => {
+            const free = topic.resources.filter((r) => r.type === 'free')
+            const paid = topic.resources.filter((r) => r.type === 'paid')
+            return (
+              <div className="space-y-3">
+                {free.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-1.5 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                      Free Resources
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {free.map((r, i) => <ResourceChip key={i} r={r} />)}
+                    </div>
+                  </div>
+                )}
+                {paid.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                      Paid Resources
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {paid.map((r, i) => <ResourceChip key={i} r={r} />)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {!isCompleted && (
             <button
