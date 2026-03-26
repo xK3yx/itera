@@ -22,10 +22,10 @@ export default function Login() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4 transition-colors">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md w-full max-w-md p-8">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">Welcome back</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Sign in to continue your learning journey</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Sign in with your <strong>email address</strong> and password</p>
 
         {error && (
-          <div role="alert" className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">
+          <div role="alert" className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4 border border-red-200 dark:border-red-800">
             {error}
           </div>
         )}

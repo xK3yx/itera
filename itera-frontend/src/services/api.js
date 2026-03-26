@@ -17,7 +17,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      window.location.href = '/login'
+      const url = error.config?.url || ''
+      // Don't redirect for auth endpoints — let the form handle & display the error
+      const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register')
+      if (!isAuthEndpoint) {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }

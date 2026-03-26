@@ -44,16 +44,10 @@ def _user_to_dict(user: User) -> dict:
     }
 
 
-@router.put("/me")
-async def update_user(
-    payload: UserUpdateRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def _apply_update(current_user: User, payload: UserUpdateRequest, db: AsyncSession) -> dict:
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(current_user, field, value)
 
-    # Auto-compute profile_completed
     current_user.profile_completed = bool(
         current_user.full_name
         and current_user.bio
@@ -68,3 +62,34 @@ async def update_user(
     await db.refresh(current_user)
     logger.info("[Profile] Updated user=%s profile_completed=%s", current_user.id, current_user.profile_completed)
     return {"data": _user_to_dict(current_user)}
+
+
+@router.put("/me")
+async def update_user_put(
+    payload: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _apply_update(current_user, payload, db)
+
+
+@router.patch("/me")
+async def update_user_patch(
+    payload: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _apply_update(current_user, payload, db)
+
+
+@router.patch("/{user_id}")
+async def update_user_by_id(
+    user_id: str,
+    payload: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Verify user can only update their own profile
+    if str(current_user.id) != user_id:
+        raise HTTPException(status_code=403, detail="Cannot update another user's profile")
+    return await _apply_update(current_user, payload, db)
