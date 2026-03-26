@@ -1,7 +1,38 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { generateRoadmap, listGeneratedRoadmaps, deleteGeneratedRoadmap } from '../services/api'
 import useAuthStore from '../store/authStore'
+
+const LOADING_STAGES = [
+  { after: 0,   msg: 'Analyzing your profile...' },
+  { after: 10,  msg: 'Generating learning path structure...' },
+  { after: 30,  msg: 'Searching for courses on YouTube, Coursera, Udemy...' },
+  { after: 60,  msg: 'Building knowledge base for progress tracking...' },
+  { after: 90,  msg: 'Almost done, finalizing your roadmap...' },
+]
+
+function useLoadingMessage(active) {
+  const [msg, setMsg] = useState(LOADING_STAGES[0].msg)
+  const timerRef = useRef(null)
+  const startRef = useRef(null)
+
+  useEffect(() => {
+    if (!active) { setMsg(LOADING_STAGES[0].msg); return }
+    startRef.current = Date.now()
+    const tick = () => {
+      const elapsed = (Date.now() - startRef.current) / 1000
+      let current = LOADING_STAGES[0].msg
+      for (const stage of LOADING_STAGES) {
+        if (elapsed >= stage.after) current = stage.msg
+      }
+      setMsg(current)
+    }
+    timerRef.current = setInterval(tick, 1000)
+    return () => clearInterval(timerRef.current)
+  }, [active])
+
+  return msg
+}
 
 export default function Recommendations() {
   const navigate = useNavigate()
@@ -16,6 +47,7 @@ export default function Recommendations() {
   })
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState('')
+  const loadingMsg = useLoadingMessage(generating)
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(true)
   const [deletingId, setDeletingId] = useState(null)
@@ -204,7 +236,7 @@ export default function Recommendations() {
                 {generating ? (
                   <>
                     <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                    Generating roadmap (this may take 1-2 minutes)...
+                    {loadingMsg}
                   </>
                 ) : (
                   'Generate Roadmap'
