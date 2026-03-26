@@ -89,6 +89,24 @@ export default function Recommendations() {
       const roadmap = res.data.data
       navigate(`/roadmaps/${roadmap.id}`)
     } catch (err) {
+      // If it's a timeout or 504, the backend may have finished — poll for the roadmap
+      const isTimeout = err.code === 'ECONNABORTED' || err.response?.status === 504
+      if (isTimeout) {
+        try {
+          // Wait a moment then check if the roadmap was created
+          await new Promise((r) => setTimeout(r, 3000))
+          const listRes = await listGeneratedRoadmaps()
+          const roadmaps = listRes.data.data || []
+          if (roadmaps.length > 0) {
+            // Navigate to the most recently created roadmap
+            const newest = roadmaps[0] // backend returns newest first
+            navigate(`/roadmaps/${newest.id}`)
+            return
+          }
+        } catch {
+          // Fall through to error
+        }
+      }
       setGenError(err.response?.data?.detail || 'Roadmap generation failed. Please try again.')
     } finally {
       setGenerating(false)

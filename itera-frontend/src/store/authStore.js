@@ -10,6 +10,22 @@ const useAuthStore = create(
       isLoading: false,
       error: null,
 
+      // Verify persisted token is still valid on app load
+      hydrateUser: async () => {
+        const token = get().token
+        if (!token) return
+        try {
+          const res = await api.get('/api/v1/auth/me', {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          set({ user: res.data })
+        } catch {
+          // Token is invalid/expired — clear auth state
+          setAuthToken(null)
+          set({ user: null, token: null })
+        }
+      },
+
       register: async (email, username, password) => {
         set({ isLoading: true, error: null })
         try {

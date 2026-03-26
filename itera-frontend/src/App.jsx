@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -19,6 +20,21 @@ function ProfileGuard({ children }) {
 }
 
 export default function App() {
+  const [ready, setReady] = useState(false)
+  const hydrateUser = useAuthStore((s) => s.hydrateUser)
+
+  useEffect(() => {
+    hydrateUser().finally(() => setReady(true))
+  }, [hydrateUser])
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
+      </div>
+    )
+  }
+
   return (
     <BrowserRouter>
       <Routes>
