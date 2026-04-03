@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float
-from sqlalchemy.dialects.postgresql import UUID, JSON
+from sqlalchemy.dialects.postgresql import UUID, JSON, JSONB
 from sqlalchemy.sql import func
 from app.database import Base
 import uuid
@@ -24,4 +24,5 @@ class TopicProgressLog(Base):
     log_text = Column(Text, nullable=False)
     passed = Column(Boolean, nullable=False)
     rejection_reason = Column(String, nullable=True)
+    match_details = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

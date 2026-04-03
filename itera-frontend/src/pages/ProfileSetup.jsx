@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { updateProfile } from '../services/api'
 import useAuthStore from '../store/authStore'
@@ -22,8 +22,106 @@ const TECH_OPTIONS = [
   'GCP', 'Azure', 'PostgreSQL', 'MongoDB', 'Redis', 'Git', 'Linux',
 ]
 
-export default function ProfileSetup() {
+const ROLE_OPTIONS = [
+  'Frontend Developer',
+  'Backend Developer',
+  'Full-Stack Developer',
+  'Mobile Developer',
+  'DevOps Engineer',
+  'Cloud Engineer',
+  'Data Scientist',
+  'Data Engineer',
+  'Data Analyst',
+  'ML Engineer',
+  'AI Engineer',
+  'Software Engineer',
+  'Site Reliability Engineer',
+  'Security Engineer',
+  'Cybersecurity Analyst',
+  'QA Engineer',
+  'Embedded Systems Engineer',
+  'Game Developer',
+  'Blockchain Developer',
+  'iOS Developer',
+  'Android Developer',
+  'UI/UX Designer',
+  'Product Manager',
+  'Technical Writer',
+  'Solutions Architect',
+  'Platform Engineer',
+  'Systems Administrator',
+]
+
+function RoleCombobox({ value, onChange, placeholder }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filtered = ROLE_OPTIONS.filter((r) =>
+    r.toLowerCase().includes((search || value || '').toLowerCase())
+  )
+
+  const handleInputChange = (e) => {
+    const v = e.target.value
+    setSearch(v)
+    onChange(v)
+    if (!open) setOpen(true)
+  }
+
+  const handleSelect = (role) => {
+    onChange(role)
+    setSearch('')
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={value}
+        onChange={handleInputChange}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
+      />
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={open ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+        </svg>
+      </button>
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg py-1">
+          {filtered.map((role) => (
+            <li
+              key={role}
+              onClick={() => handleSelect(role)}
+              className={`px-4 py-2 text-sm cursor-pointer transition-colors ${
+                role === value
+                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                  : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'
+              }`}
+            >
+              {role}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+export default function ProfileSetup({ isEditing = false }) {
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const updateUser = useAuthStore((s) => s.updateUser)
 
   const [form, setForm] = useState({
@@ -40,6 +138,24 @@ export default function ProfileSetup() {
   const [techInput, setTechInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  // Pre-fill form with existing user data when editing
+  useEffect(() => {
+    if (isEditing && user) {
+      setForm({
+        full_name: user.full_name || '',
+        bio: user.bio || '',
+        primary_domain: user.primary_domain || '',
+        experience_years: user.experience_years != null ? String(user.experience_years) : '',
+        tech_stack: user.tech_stack || [],
+        current_role: user.current_role || '',
+        education: user.education || '',
+        github_url: user.github_url || '',
+        linkedin_url: user.linkedin_url || '',
+      })
+    }
+  }, [isEditing, user])
 
   const bioLen = form.bio.length
   const bioValid = bioLen >= 50 && bioLen <= 500
@@ -74,6 +190,7 @@ export default function ProfileSetup() {
     if (!canSubmit) return
     setSaving(true)
     setError('')
+    setSuccess('')
     try {
       const payload = {
         ...form,
@@ -81,9 +198,21 @@ export default function ProfileSetup() {
       }
       const res = await updateProfile(payload)
       updateUser(res.data.data)
-      navigate('/recommendations')
+      if (isEditing) {
+        setSuccess('Profile updated successfully!')
+        setTimeout(() => navigate('/recommendations'), 1000)
+      } else {
+        navigate('/recommendations')
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save profile. Please try again.')
+      const detail = err.response?.data?.detail
+      if (typeof detail === 'string') {
+        setError(detail)
+      } else if (Array.isArray(detail)) {
+        setError(detail.map((d) => d.msg || JSON.stringify(d)).join('; '))
+      } else {
+        setError('Failed to save profile. Please try again.')
+      }
     } finally {
       setSaving(false)
     }
@@ -100,14 +229,34 @@ export default function ProfileSetup() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-10 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-8">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">Complete your profile</h1>
+          <div className="flex items-center justify-between mb-1">
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+              {isEditing ? 'Edit your profile' : 'Complete your profile'}
+            </h1>
+            {isEditing && (
+              <button
+                onClick={() => navigate('/recommendations')}
+                className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
           <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-            We need this to generate personalized roadmaps for you.
+            {isEditing
+              ? 'Update your profile information to improve roadmap personalization.'
+              : 'We need this to generate personalized roadmaps for you.'}
           </p>
 
           {error && (
             <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">
               {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-sm rounded-lg px-4 py-3 mb-4">
+              {success}
             </div>
           )}
 
@@ -133,7 +282,7 @@ export default function ProfileSetup() {
               </label>
               <textarea
                 name="bio" value={form.bio} onChange={handleChange} rows={4}
-                placeholder="Tell us about yourself, your background, and what drives you to learn (50–500 characters)..."
+                placeholder="Tell us about yourself, your background, and what drives you to learn (50-500 characters)..."
                 className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
@@ -204,7 +353,7 @@ export default function ProfileSetup() {
                   {form.tech_stack.map((t) => (
                     <span key={t} className="inline-flex items-center gap-1 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs px-2 py-0.5 rounded-full">
                       {t}
-                      <button type="button" onClick={() => toggleTech(t)} className="hover:text-red-500 ml-0.5">×</button>
+                      <button type="button" onClick={() => toggleTech(t)} className="hover:text-red-500 ml-0.5">x</button>
                     </span>
                   ))}
                 </div>
@@ -212,7 +361,7 @@ export default function ProfileSetup() {
             </div>
 
             {/* Optional fields */}
-            <details className="group">
+            <details className="group" open={isEditing && (form.current_role || form.education || form.github_url || form.linkedin_url)}>
               <summary className="cursor-pointer text-sm text-blue-500 hover:underline select-none">
                 + Add optional details (current role, education, social links)
               </summary>
@@ -220,9 +369,10 @@ export default function ProfileSetup() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Role</label>
-                    <input name="current_role" value={form.current_role} onChange={handleChange}
-                      placeholder="e.g. Junior Developer"
-                      className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <RoleCombobox
+                      value={form.current_role}
+                      onChange={(v) => setForm((f) => ({ ...f, current_role: v }))}
+                      placeholder="Select or type a role..."
                     />
                   </div>
                   <div>
@@ -263,7 +413,7 @@ export default function ProfileSetup() {
               type="submit" disabled={!canSubmit || saving}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm transition"
             >
-              {saving ? 'Saving...' : 'Save Profile & Continue'}
+              {saving ? 'Saving...' : isEditing ? 'Save Changes' : 'Save Profile & Continue'}
             </button>
           </form>
         </div>

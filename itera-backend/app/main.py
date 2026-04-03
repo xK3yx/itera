@@ -2,13 +2,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.routers import auth, courses, generated_roadmaps, users, roadmap_progress
+from app.routers import knowledge_base, admin
 
 settings = get_settings()
 
 app = FastAPI(
     title="Itera API",
     description="Personalized AI learning roadmap generator",
-    version="3.0.0",
+    version="3.1.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -32,6 +33,8 @@ app.include_router(courses.router)
 app.include_router(generated_roadmaps.router)
 app.include_router(users.router)
 app.include_router(roadmap_progress.router)
+app.include_router(knowledge_base.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

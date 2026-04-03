@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ProfileSetup from './pages/ProfileSetup'
 import Recommendations from './pages/Recommendations'
 import RoadmapView from './pages/RoadmapView'
+import Navbar from './components/Navbar'
 import useAuthStore from './store/authStore'
 import './store/themeStore' // apply saved theme before first render
 
@@ -19,24 +20,14 @@ function ProfileGuard({ children }) {
   return children
 }
 
-export default function App() {
-  const [ready, setReady] = useState(false)
-  const hydrateUser = useAuthStore((s) => s.hydrateUser)
-
-  useEffect(() => {
-    hydrateUser().finally(() => setReady(true))
-  }, [hydrateUser])
-
-  if (!ready) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
-      </div>
-    )
-  }
+function AppLayout() {
+  const token = useAuthStore((state) => state.token)
+  const location = useLocation()
+  const hideNavbar = ['/login', '/register'].includes(location.pathname)
 
   return (
-    <BrowserRouter>
+    <>
+      {token && !hideNavbar && <Navbar />}
       <Routes>
         <Route path="/" element={<Navigate to="/recommendations" replace />} />
         <Route path="/login" element={<Login />} />
@@ -46,6 +37,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ProfileSetup />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/edit-profile"
+          element={
+            <ProtectedRoute>
+              <ProfileSetup isEditing />
             </ProtectedRoute>
           }
         />
@@ -71,6 +70,29 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/recommendations" replace />} />
       </Routes>
+    </>
+  )
+}
+
+export default function App() {
+  const [ready, setReady] = useState(false)
+  const hydrateUser = useAuthStore((s) => s.hydrateUser)
+
+  useEffect(() => {
+    hydrateUser().finally(() => setReady(true))
+  }, [hydrateUser])
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
+      </div>
+    )
+  }
+
+  return (
+    <BrowserRouter>
+      <AppLayout />
     </BrowserRouter>
   )
 }

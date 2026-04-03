@@ -48,7 +48,7 @@ export const updateProfile = (payload) =>
 
 // --- v3 Roadmaps ---
 export const generateRoadmap = (payload) =>
-  api.post('/api/v3/roadmaps/generate', payload, { headers: authHeaders(), timeout: 300000 })
+  api.post('/api/v3/roadmaps/generate', payload, { headers: authHeaders(), timeout: 600000 })
 
 export const listGeneratedRoadmaps = () =>
   api.get('/api/v3/roadmaps/', { headers: authHeaders() })

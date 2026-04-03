@@ -11,7 +11,9 @@ from app.models.user import User
 from app.models.generated_roadmap import GeneratedRoadmap, KnowledgeBase
 from app.models.roadmap_enrollment import RoadmapEnrollment, TopicProgressLog
 from app.services.chroma_service import index_knowledge_base, get_topic_relevance
-from app.services.llm_client import async_chat_complete, extract_and_parse_json
+from app.services.llm_client import extract_and_parse_json
+from app.services.llm_tracker import tracked_llm_call
+from app.services.fuzzy_match import fuzzy_keyword_match
 
 logger = logging.getLogger(__name__)
 
@@ -133,39 +135,105 @@ async def log_progress(
     if topic_id in completed:
         return _reject(db, enrollment, topic_id, log_text, "Topic already completed.")
 
-    # --- LAYER 4: Relevance (ChromaDB cosine similarity >= 0.50) ---
+    # --- LAYER 4: Combined relevance — ChromaDB semantic + fuzzy keyword matching ---
+    match_details = {}
     try:
-        similarity = get_topic_relevance(str(roadmap_id), topic_id, log_text)
-        logger.info("[Progress] Topic %s relevance score: %.3f", topic_id, similarity)
-        if similarity < 0.50:
-            return _reject(db, enrollment, topic_id, log_text, f"Log doesn't seem relevant to this topic (similarity: {similarity:.2f}). Be more specific about what you learned.")
+        # 4a. ChromaDB semantic similarity
+        semantic_score = get_topic_relevance(str(roadmap_id), topic_id, log_text)
+        logger.info("[Progress] Topic %s semantic score: %.3f", topic_id, semantic_score)
+
+        # 4b. Fuzzy keyword matching against KB validation_keywords
+        keyword_result = {"match_percentage": 0.0, "matched_keywords": [], "unmatched_keywords": [], "total_keywords": 0, "matched_count": 0}
+        try:
+            kb_result = await db.execute(select(KnowledgeBase).where(KnowledgeBase.roadmap_id == roadmap_id))
+            kb = kb_result.scalar_one_or_none()
+            if kb and kb.data:
+                topics_list = kb.data.get("topics", [])
+                topic_kb_entry = next((t for t in topics_list if t.get("topic_id") == topic_id), None)
+                if topic_kb_entry:
+                    keyword_result = fuzzy_keyword_match(log_text, topic_kb_entry)
+                    logger.info("[Progress] Topic %s keyword match: %.1f%% (%d/%d)", topic_id, keyword_result["match_percentage"], keyword_result["matched_count"], keyword_result["total_keywords"])
+        except Exception as kw_err:
+            logger.warning("[Progress] Keyword match failed: %s", kw_err)
+
+        # 4c. Combined score: semantic (60%) + keyword (40%)
+        combined_score = (semantic_score * 0.6) + (keyword_result["match_percentage"] / 100.0 * 0.4)
+        passes_relevance = combined_score >= 0.45 or keyword_result["match_percentage"] >= 15.0
+
+        match_details = {
+            "semantic_score": round(semantic_score, 4),
+            "keyword_match_percentage": keyword_result["match_percentage"],
+            "keywords_matched": keyword_result["matched_keywords"],
+            "keywords_missed": keyword_result["unmatched_keywords"],
+            "combined_score": round(combined_score, 4),
+        }
+
+        logger.info("[Progress] Topic %s combined_score=%.3f passes=%s", topic_id, combined_score, passes_relevance)
+
+        if not passes_relevance:
+            return _reject(
+                db, enrollment, topic_id, log_text,
+                f"Log doesn't seem relevant to this topic (combined score: {combined_score:.2f}). Be more specific about what you learned.",
+                match_details=match_details,
+            )
     except Exception as e:
         logger.warning("[Progress] Relevance check failed: %s — skipping", e)
 
-    # --- LAYER 5: LLM specificity check ---
+    # --- LAYER 5: LLM specificity check (focused prompt — only topic context, no full roadmap) ---
     try:
         # Get topic title from roadmap
         rm_result = await db.execute(select(GeneratedRoadmap).where(GeneratedRoadmap.id == roadmap_id))
         rm = rm_result.scalar_one_or_none()
         topic_title = _find_topic_title(rm.roadmap_data if rm else {}, topic_id)
 
-        specificity_prompt = f"""A student is logging progress for the topic "{topic_title}".
-Their log: "{log_text}"
+        # Pull KB context for a focused prompt (what_it_is + first 10 validation_keywords)
+        what_it_is = ""
+        kw_sample = []
+        try:
+            kb_result2 = await db.execute(select(KnowledgeBase).where(KnowledgeBase.roadmap_id == roadmap_id))
+            kb2 = kb_result2.scalar_one_or_none()
+            if kb2 and kb2.data:
+                topic_entry = next((t for t in kb2.data.get("topics", []) if t.get("topic_id") == topic_id), None)
+                if topic_entry:
+                    knowledge = topic_entry.get("knowledge", {})
+                    what_it_is = knowledge.get("what_it_is", "")
+                    kw_sample = knowledge.get("validation_keywords", [])[:10]
+        except Exception:
+            pass
 
-Is this log SPECIFIC enough? A good log mentions concrete concepts, tools, or techniques they learned.
-A bad log is vague like "I learned stuff" or "it was interesting".
+        # Lean prompt — only topic name, brief description, key terms, and student log
+        kw_line = f"Key concepts include: {', '.join(kw_sample)}." if kw_sample else ""
+        what_line = f"This topic is about: {what_it_is}" if what_it_is else ""
 
-Return ONLY JSON: {{"specific": true}} or {{"specific": false, "reason": "brief explanation"}}"""
+        specificity_prompt = (
+            f"A student is learning '{topic_title}'. {what_line} {kw_line}\n\n"
+            f"The student wrote: \"{log_text}\"\n\n"
+            f"Does their writing demonstrate they learned something specific about this topic? "
+            f"A good log mentions concrete concepts, tools, or techniques. A bad log is vague like 'I learned stuff'.\n\n"
+            f"Return ONLY JSON: {{\"specific\": true}} or {{\"specific\": false, \"reason\": \"brief explanation\"}}"
+        )
 
-        raw = await async_chat_complete(
+        tracked_result = await tracked_llm_call(
             [{"role": "system", "content": "You evaluate learning logs for specificity. Return only JSON."},
              {"role": "user", "content": specificity_prompt}],
-            temperature=0.2, max_tokens=200,
+            call_type="specificity_check",
+            roadmap_id=str(roadmap_id),
+            topic_id=topic_id,
+            temperature=0.2,
+            max_tokens=200,
+            db=db,
         )
-        result = extract_and_parse_json(raw)
-        if not result.get("specific", True):
-            reason = result.get("reason", "Log is too vague. Describe specific concepts or skills you learned.")
-            return _reject(db, enrollment, topic_id, log_text, f"Not specific enough: {reason}")
+        parsed = extract_and_parse_json(tracked_result["content"])
+
+        # Attach LLM result to match_details
+        match_details["llm_specificity_result"] = "YES" if parsed.get("specific", True) else "NO"
+        match_details["llm_specificity_latency_ms"] = tracked_result.get("latency_ms")
+        match_details["model_used"] = tracked_result.get("model")
+        match_details["provider"] = tracked_result.get("provider")
+
+        if not parsed.get("specific", True):
+            reason = parsed.get("reason", "Log is too vague. Describe specific concepts or skills you learned.")
+            return _reject(db, enrollment, topic_id, log_text, f"Not specific enough: {reason}", match_details=match_details)
     except Exception as e:
         logger.warning("[Progress] Specificity check failed: %s — accepting anyway", e)
 
@@ -175,6 +243,7 @@ Return ONLY JSON: {{"specific": true}} or {{"specific": false, "reason": "brief 
         topic_id=topic_id,
         log_text=log_text,
         passed=True,
+        match_details=match_details if match_details else None,
     )
     db.add(log_entry)
 
@@ -194,7 +263,7 @@ Return ONLY JSON: {{"specific": true}} or {{"specific": false, "reason": "brief 
     }
 
 
-def _reject(db, enrollment, topic_id, log_text, reason):
+def _reject(db, enrollment, topic_id, log_text, reason, match_details=None):
     """Helper to log a rejected progress entry."""
     log_entry = TopicProgressLog(
         enrollment_id=enrollment.id,
@@ -202,6 +271,7 @@ def _reject(db, enrollment, topic_id, log_text, reason):
         log_text=log_text,
         passed=False,
         rejection_reason=reason,
+        match_details=match_details,
     )
     db.add(log_entry)
     return {"accepted": False, "topic_id": topic_id, "reason": reason}

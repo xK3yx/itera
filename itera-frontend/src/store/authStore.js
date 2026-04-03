@@ -2,6 +2,16 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import api, { setAuthToken } from '../services/api'
 
+function extractError(err) {
+  const detail = err.response?.data?.detail
+  if (!detail) return err.message || 'Something went wrong'
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+  }
+  return String(detail)
+}
+
 const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -34,7 +44,7 @@ const useAuthStore = create(
           set({ user: res.data.user, token: res.data.access_token, isLoading: false })
           return { success: true }
         } catch (err) {
-          const message = err.response?.data?.detail || 'Registration failed'
+          const message = extractError(err) || 'Registration failed'
           set({ error: message, isLoading: false })
           return { success: false, error: message }
         }
@@ -48,7 +58,7 @@ const useAuthStore = create(
           set({ user: res.data.user, token: res.data.access_token, isLoading: false })
           return { success: true }
         } catch (err) {
-          const message = err.response?.data?.detail || 'Login failed'
+          const message = extractError(err) || 'Login failed'
           set({ error: message, isLoading: false })
           return { success: false, error: message }
         }

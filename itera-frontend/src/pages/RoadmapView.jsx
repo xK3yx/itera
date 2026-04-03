@@ -8,6 +8,16 @@ import {
   logProgress,
 } from '../services/api'
 
+// Handles both old flat-number format and v3.1 {free, paid} format.
+// For old data, paid path is estimated at 70% of free hours (paid resources are more concise).
+function parseHours(val) {
+  if (val == null) return null
+  if (typeof val === 'object' && 'free' in val) return { free: val.free, paid: val.paid }
+  const h = parseFloat(val)
+  if (isNaN(h) || h <= 0) return null
+  return { free: h, paid: Math.round(h * 0.7 * 10) / 10 }
+}
+
 const PHASE_COLORS = ['blue', 'purple', 'green', 'orange', 'pink']
 
 const phaseStyle = (idx) => {
@@ -33,6 +43,7 @@ const platformStyle = (platform) => {
     YouTube: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
     Coursera: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     Udemy: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    freeCodeCamp: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
   }
   return map[platform] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
@@ -146,9 +157,20 @@ function TopicRow({ topic, roadmapId, completedIds, onProgressAccepted }) {
           <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{topic.title}</span>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-          {topic.estimated_hours && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">{topic.estimated_hours}h</span>
-          )}
+          {topic.estimated_hours != null && (() => {
+            const h = parseHours(topic.estimated_hours)
+            if (!h) return null
+            const avg = Math.round((h.free + h.paid) / 2 * 10) / 10
+            return (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                <span className="text-gray-500 dark:text-gray-400">~{avg}h</span>
+                {' · '}
+                <span className="text-green-600 dark:text-green-400">{h.free}h</span>
+                {' / '}
+                <span className="text-amber-500 dark:text-amber-400">{h.paid}h</span>
+              </span>
+            )
+          })()}
           <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
         </div>
       </button>
@@ -214,16 +236,48 @@ function TopicRow({ topic, roadmapId, completedIds, onProgressAccepted }) {
   )
 }
 
+function AnimatedText({ text, speed = 22, onDone, className }) {
+  const [displayed, setDisplayed] = useState('')
+
+  useEffect(() => {
+    if (!text) { onDone?.(); return }
+    let i = 0
+    const id = setInterval(() => {
+      i++
+      setDisplayed(text.slice(0, i))
+      if (i >= text.length) { clearInterval(id); onDone?.() }
+    }, speed)
+    return () => clearInterval(id)
+  }, [text])
+
+  return (
+    <span className={className}>
+      {displayed || '\u00A0'}
+      {displayed.length < (text?.length ?? 0) && (
+        <span className="inline-block w-px h-[1em] bg-current ml-px align-middle animate-pulse" />
+      )}
+    </span>
+  )
+}
+
 export default function RoadmapView() {
   const { roadmapId } = useParams()
   const navigate = useNavigate()
-
   const [roadmap, setRoadmap] = useState(null)
   const [enrollment, setEnrollment] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
+
+  // Typewriter animation state
+  const [typingPhaseIdx, setTypingPhaseIdx] = useState(0)
+  const [revealedPhases, setRevealedPhases] = useState(new Set())
+
+  const handlePhaseTypeDone = useCallback((idx) => {
+    setTimeout(() => setRevealedPhases((prev) => new Set([...prev, idx])), 120)
+    setTimeout(() => setTypingPhaseIdx(idx + 1), 350)
+  }, [])
 
   const completedIds = enrollment?.completed_topic_ids || []
 
@@ -345,10 +399,33 @@ export default function RoadmapView() {
               <span className="text-gray-400 dark:text-gray-500 text-xs">Total Topics</span>
               <p className="font-semibold text-gray-800 dark:text-gray-100">{totalTopics}</p>
             </div>
-            <div>
-              <span className="text-gray-400 dark:text-gray-500 text-xs">Est. Hours</span>
-              <p className="font-semibold text-gray-800 dark:text-gray-100">{Math.round(roadmap.total_estimated_hours || 0)}h</p>
-            </div>
+            {(() => {
+              const h = parseHours(roadmap.total_estimated_hours)
+              if (!h) return null
+              const avg = Math.round((h.free + h.paid) / 2 * 10) / 10
+              return (
+                <>
+                  <div>
+                    <span className="text-gray-400 dark:text-gray-500 text-xs">Avg. Est.</span>
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">{avg}h</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 dark:text-gray-500 text-xs flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                      Free Path
+                    </span>
+                    <p className="font-semibold text-green-600 dark:text-green-400">{h.free}h</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 dark:text-gray-500 text-xs flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                      Paid Path
+                    </span>
+                    <p className="font-semibold text-amber-600 dark:text-amber-400">{h.paid}h</p>
+                  </div>
+                </>
+              )
+            })()}
             {roadmap.hours_per_week && (
               <div>
                 <span className="text-gray-400 dark:text-gray-500 text-xs">Hours/Week</span>
@@ -381,46 +458,63 @@ export default function RoadmapView() {
           )}
         </div>
 
-        {/* Phases */}
-        {phases.map((phase, pi) => (
-          <div key={pi} className={`rounded-2xl border-l-4 p-5 space-y-4 ${phaseStyle(pi)}`}>
-            <div className="flex items-center gap-3">
-              <span className={`${phaseNumStyle(pi)} text-white text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0`}>
-                {pi + 1}
-              </span>
-              <div>
-                <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">{phase.title}</h2>
-                {phase.description && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{phase.description}</p>
-                )}
+        {/* Phases — revealed one by one with typewriter on phase title */}
+        {phases.map((phase, pi) => {
+          if (pi > typingPhaseIdx) return null
+          const revealed = revealedPhases.has(pi)
+          const isTyping = pi === typingPhaseIdx
+          const topicCount = phase.skill_areas?.reduce((a, sa) => a + (sa.topics || []).length, 0)
+          return (
+            <div key={pi} className={`rounded-2xl border-l-4 p-5 space-y-4 ${phaseStyle(pi)}`}>
+              <div className="flex items-center gap-3">
+                <span className={`${phaseNumStyle(pi)} text-white text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0`}>
+                  {pi + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+                    {isTyping ? (
+                      <AnimatedText
+                        text={phase.title}
+                        speed={22}
+                        onDone={() => handlePhaseTypeDone(pi)}
+                      />
+                    ) : phase.title}
+                  </h2>
+                  <p className={`text-xs text-gray-500 dark:text-gray-400 mt-0.5 transition-opacity duration-300 ${revealed ? 'opacity-100' : 'opacity-0'}`}>
+                    {phase.description}
+                  </p>
+                </div>
+                <div className={`ml-auto text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 transition-opacity duration-300 ${revealed ? 'opacity-100' : 'opacity-0'}`}>
+                  {topicCount} topics
+                </div>
               </div>
-              <div className="ml-auto text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-                {phase.skill_areas?.reduce((a, sa) => a + (sa.topics || []).length, 0)} topics
+
+              <div className={`space-y-4 transition-all duration-500 ${revealed ? 'opacity-100' : 'opacity-0 pointer-events-none overflow-hidden max-h-0'}`}>
+                {(phase.skill_areas || []).map((sa, ai) => (
+                  <div key={ai} className="space-y-2">
+                    <div className="mb-2">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{sa.title}</h3>
+                      {sa.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{sa.description}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5 pl-2">
+                      {(sa.topics || []).map((topic, ti) => (
+                        <TopicRow
+                          key={ti}
+                          topic={topic}
+                          roadmapId={roadmapId}
+                          completedIds={completedIds}
+                          onProgressAccepted={handleProgressAccepted}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-
-            {(phase.skill_areas || []).map((sa, ai) => (
-              <div key={ai} className="space-y-2">
-                <div className="mb-2">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{sa.title}</h3>
-                  {sa.description && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{sa.description}</p>
-                  )}
-                </div>
-                <div className="space-y-1.5 pl-2">
-                  {(sa.topics || []).map((topic, ti) => (
-                    <TopicRow
-                      key={ti}
-                      topic={topic}
-                      roadmapId={roadmapId}
-                      completedIds={completedIds}
-                      onProgressAccepted={handleProgressAccepted}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          )
+        })}
         ))}
       </div>
     </div>

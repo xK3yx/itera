@@ -34,20 +34,81 @@ def index_knowledge_base(roadmap_id: str, kb_data: dict):
     documents = []
     for topic in kb_data.get("topics", []):
         tid = topic.get("topic_id", "")
-        doc_parts = [
-            topic.get("title", ""),
-            " ".join(topic.get("subtopics", [])),
-            " ".join(topic.get("keywords", [])),
-            " ".join(topic.get("synonyms", [])),
-            " ".join(topic.get("related_terms", [])),
-            " ".join(topic.get("common_student_phrases", [])),
-        ]
         ids.append(tid)
-        documents.append(" ".join(doc_parts))
+        documents.append(build_embedding_text(topic))
 
     if ids:
         collection.upsert(ids=ids, documents=documents)
         logger.info("[Chroma] Indexed %d topics for roadmap %s", len(ids), roadmap_id)
+
+
+def build_embedding_text(topic_kb: dict) -> str:
+    """
+    Build a rich embedding text from a KB topic entry.
+    Handles both new rich format (with 'knowledge' key) and legacy format.
+    """
+    # New rich format
+    if "knowledge" in topic_kb:
+        k = topic_kb["knowledge"]
+        parts = [
+            topic_kb.get("topic_name", topic_kb.get("title", "")),
+            k.get("what_it_is", ""),
+            "You will learn: " + "; ".join(k.get("what_you_will_learn", [])[:5]),
+            "Subtopics: " + ", ".join(k.get("subtopics", [])),
+            "Keywords: " + ", ".join(k.get("validation_keywords", [])),
+        ]
+        return " ".join(p for p in parts if p.strip())
+
+    # Legacy format fallback
+    parts = [
+        topic_kb.get("title", ""),
+        " ".join(topic_kb.get("subtopics", [])),
+        " ".join(topic_kb.get("keywords", [])),
+        " ".join(topic_kb.get("synonyms", [])),
+        " ".join(topic_kb.get("related_terms", [])),
+        " ".join(topic_kb.get("common_student_phrases", [])),
+    ]
+    return " ".join(p for p in parts if p.strip())
+
+
+def reindex_single_topic(roadmap_id: str, topic_id: str, topic_kb: dict):
+    """Update a single topic's embedding in the ChromaDB collection."""
+    client = _get_client()
+    ef = _get_ef()
+    col_name = f"kb_{str(roadmap_id).replace('-', '_')}"
+    try:
+        collection = client.get_collection(name=col_name, embedding_function=ef)
+    except Exception:
+        collection = client.get_or_create_collection(name=col_name, embedding_function=ef)
+
+    doc = build_embedding_text(topic_kb)
+    collection.upsert(ids=[topic_id], documents=[doc])
+    logger.info("[Chroma] Re-indexed topic %s in roadmap %s", topic_id, roadmap_id)
+
+
+async def reindex_all_roadmaps(db):
+    """
+    Re-index all roadmaps' KB entries in ChromaDB with the new rich format.
+    Call this after a KB format migration to backfill existing data.
+    """
+    from sqlalchemy import select
+    from app.models.generated_roadmap import GeneratedRoadmap, KnowledgeBase
+
+    rm_result = await db.execute(select(GeneratedRoadmap))
+    roadmaps = rm_result.scalars().all()
+
+    for roadmap in roadmaps:
+        try:
+            kb_result = await db.execute(
+                select(KnowledgeBase).where(KnowledgeBase.roadmap_id == roadmap.id)
+            )
+            kb = kb_result.scalar_one_or_none()
+            if kb and kb.data:
+                index_knowledge_base(str(roadmap.id), kb.data)
+                topic_count = len(kb.data.get("topics", []))
+                logger.info("[Chroma] Re-indexed roadmap %s: %d topics", roadmap.id, topic_count)
+        except Exception as e:
+            logger.warning("[Chroma] Failed to re-index roadmap %s: %s", roadmap.id, e)
 
 
 def get_topic_relevance(roadmap_id: str, topic_id: str, log_text: str) -> float:
