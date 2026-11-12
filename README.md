@@ -202,3 +202,7 @@ docker compose down -v
 4. **Hours** — free path hours stamped on each topic; paid = free × 0.7; average shown in UI
 5. **Persist** — roadmap saved to database and returned to user (~1–2 minutes total)
 6. **KB** — knowledge base generated in background (asyncio task) after response is returned; used later for semantic progress matching
+
+## License
+
+[MIT](LICENSE)
