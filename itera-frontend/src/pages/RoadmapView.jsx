@@ -48,7 +48,16 @@ const platformStyle = (platform) => {
   return map[platform] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
 
+// YouTube's API returns titles with HTML entities (e.g. "&amp;"), and roadmaps
+// saved before the backend decoded them still contain them.
+function decodeEntities(text) {
+  const el = document.createElement('textarea')
+  el.innerHTML = text
+  return el.value
+}
+
 function ResourceChip({ r }) {
+  const title = decodeEntities(r.title || '')
   const formatLabel = r.format === 'playlist' ? 'Playlist' : r.format === 'video' ? 'Video' : null
   return (
     <a
@@ -57,7 +66,7 @@ function ResourceChip({ r }) {
     >
       <span className="font-semibold">{r.platform}</span>
       {formatLabel && <span className="opacity-60">({formatLabel})</span>}
-      <span className="opacity-80">· {r.title.slice(0, 50)}{r.title.length > 50 ? '...' : ''}</span>
+      <span className="opacity-80">· {title.slice(0, 50)}{title.length > 50 ? '...' : ''}</span>
     </a>
   )
 }

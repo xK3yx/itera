@@ -3,6 +3,7 @@ v3 Roadmap generation service.
 Breaks generation into small LLM calls that 7B models can handle.
 """
 import logging
+import html
 import asyncio
 import httpx
 from urllib.parse import quote_plus
@@ -184,7 +185,7 @@ async def _search_topic_resources(topic: dict, include_paid: bool, db=None) -> l
                     for item in items[:2]:
                         playlist_id = item["id"]["playlistId"]
                         resources.append({
-                            "title": item["snippet"]["title"],
+                            "title": html.unescape(item["snippet"]["title"]),
                             "platform": "YouTube",
                             "url": f"https://www.youtube.com/playlist?list={playlist_id}",
                             "type": "free",
@@ -211,7 +212,7 @@ async def _search_topic_resources(topic: dict, include_paid: bool, db=None) -> l
                         if items:
                             vid = items[0]
                             resources.append({
-                                "title": vid["snippet"]["title"],
+                                "title": html.unescape(vid["snippet"]["title"]),
                                 "platform": "YouTube",
                                 "url": f"https://www.youtube.com/watch?v={vid['id']['videoId']}",
                                 "type": "free",
