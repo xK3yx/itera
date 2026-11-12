@@ -1,5 +1,7 @@
 # Itera
 
+[![CI](https://github.com/xK3yx/itera/actions/workflows/ci.yml/badge.svg)](https://github.com/xK3yx/itera/actions/workflows/ci.yml)
+
 Itera is an AI-powered personalized learning roadmap generator. Fill in your profile — current role, target role, tech stack, experience — and Itera generates a structured, phase-by-phase learning roadmap with curated free and paid resources for every topic, time estimates split by learning path, and a semantic knowledge base used to validate your progress logs.
 
 ## Features
@@ -30,7 +32,7 @@ Itera is an AI-powered personalized learning roadmap generator. Fill in your pro
 | Backend | Python 3.12 + FastAPI (async) |
 | LLM | Ollama (local, any model) — Groq (llama-3.3-70b) as fallback |
 | Vector store | ChromaDB (semantic KB search) |
-| Database | PostgreSQL 15 + Redis 7 |
+| Database | PostgreSQL 15 |
 | ORM | SQLAlchemy (async) + Alembic |
 | Frontend | React 19 + Vite + Tailwind CSS |
 | State | Zustand (with localStorage persistence) |
@@ -41,7 +43,7 @@ Itera is an AI-powered personalized learning roadmap generator. Fill in your pro
 
 ### Prerequisites
 - Docker Desktop
-- Ollama running locally with a model pulled (e.g. `ollama pull llama3.1`) — **or** a [Groq API key](https://console.groq.com) as fallback (free tier available)
+- Ollama running locally with a model pulled (e.g. `ollama pull qwen2.5:7b`) — **or** a [Groq API key](https://console.groq.com) as fallback (free tier available)
 
 ### Run with Docker
 
@@ -61,38 +63,32 @@ Alembic migrations run automatically on container start — no manual step neede
 
 ### Environment Variables
 
-```env
-# App
-APP_NAME=Itera
-SECRET_KEY=your-secret-key
-DEBUG=false
+All settings live in `itera-backend/.env` (start from `.env.example`). The important ones:
 
-# Database
-POSTGRES_USER=itera_user
-POSTGRES_PASSWORD=itera_password
-POSTGRES_DB=itera_db
-DATABASE_URL=postgresql+asyncpg://itera_user:itera_password@db:5432/itera_db
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SECRET_KEY`, `JWT_SECRET_KEY` | Yes | Long random strings |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Yes | Database credentials; Docker Compose builds `DATABASE_URL` from these |
+| `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | One LLM required | Local LLM, tried first (default model `qwen2.5:7b`) |
+| `GROQ_API_KEY` | One LLM required | Fallback LLM (`llama-3.3-70b-versatile`) when Ollama is unreachable |
+| `YOUTUBE_API_KEY` | Optional | YouTube Data API v3; falls back to search links when unset or over quota |
+| `ADMIN_EMAILS` | Optional | Comma-separated emails allowed to use `/api/v3/admin/*`. Empty disables admin endpoints |
+| `CORS_ORIGINS` | Optional | Comma-separated frontend origins (defaults cover local development) |
 
-# Redis
-REDIS_URL=redis://redis:6379/0
+## Running Tests
 
-# LLM — Ollama (primary)
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-OLLAMA_MODEL=llama3.1
+```bash
+# Backend (uses in-memory SQLite, no Postgres or LLM needed)
+cd itera-backend
+pip install -r requirements.txt
+pytest
 
-# LLM — Groq (fallback when Ollama is unreachable)
-GROQ_API_KEY=your-groq-api-key
-
-# YouTube Data API v3 (optional — falls back to search URLs if not set or quota exceeded)
-YOUTUBE_API_KEY=your-youtube-api-key
-
-# JWT
-JWT_SECRET_KEY=your-jwt-secret
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=1440
+# Frontend
+cd itera-frontend
+npm install
+npm test
+npm run lint
 ```
-
-When running with Docker, `DATABASE_URL` and `REDIS_URL` use internal service hostnames automatically.
 
 ## Project Structure
 
@@ -158,13 +154,18 @@ itera/
 |--------|----------|-------------|
 | POST | `/api/v3/roadmaps/{id}/enroll` | Enroll in a roadmap |
 | GET | `/api/v3/roadmaps/{id}/enrollment` | Get enrollment + completed topics |
-| POST | `/api/v3/roadmaps/{id}/progress/{topic_id}` | Submit a progress log entry |
+| POST | `/api/v3/roadmaps/{id}/topics/{topic_id}/log` | Submit a progress log entry |
 
 ### Knowledge Base & Admin
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v3/roadmaps/{id}/kb` | Get knowledge base for a roadmap |
-| GET | `/api/v3/admin/llm-logs` | View LLM call audit log |
+| GET | `/api/v3/roadmaps/{id}/knowledge-base` | Get knowledge base for a roadmap |
+| GET | `/api/v3/roadmaps/{id}/knowledge-base/{topic_id}` | Get one topic's KB entry |
+| PATCH | `/api/v3/roadmaps/{id}/knowledge-base/{topic_id}` | Edit a topic's KB entry |
+| POST | `/api/v3/roadmaps/{id}/knowledge-base/{topic_id}/regenerate` | Regenerate a topic's KB entry |
+| GET | `/api/v3/admin/llm-logs` | LLM call audit log (admin only) |
+| GET | `/api/v3/admin/progress-logs` | Progress validation log (admin only) |
+| GET | `/api/v3/admin/kb-quality/{id}` | KB quality report (admin only) |
 
 ## Docker Commands
 
