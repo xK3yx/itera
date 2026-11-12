@@ -1,11 +1,19 @@
 from openai import AsyncOpenAI, OpenAI
 
-from app.config import get_settings
+from app.config import Settings
+from app.services import llm_client
 from app.services.llm_client import groq_client, groq_kwargs
 
 
-def test_groq_client_retries_rate_limits():
-    expected = get_settings().groq_max_retries
+def test_groq_client_retries_rate_limits(monkeypatch):
+    # Use explicit settings so the test doesn't depend on a real GROQ_API_KEY in .env
+    # (CI has no .env, and the OpenAI SDK refuses to build a client without a key).
+    settings = Settings(
+        _env_file=None, secret_key="x", jwt_secret_key="y",
+        database_url="sqlite://", groq_api_key="test-key",
+    )
+    monkeypatch.setattr(llm_client, "get_settings", lambda: settings)
+    expected = settings.groq_max_retries
     assert expected > 2  # more than the SDK default, to ride out 429s
     client = groq_client()
     assert isinstance(client, AsyncOpenAI)
