@@ -46,3 +46,12 @@ async def get_current_user(
         )
 
     return user
+
+async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    """Allow only users whose email is listed in the ADMIN_EMAILS setting."""
+    if (current_user.email or "").lower() not in settings.admin_email_set:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

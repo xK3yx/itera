@@ -10,7 +10,7 @@ class LLMCallLog(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     call_type = Column(String, nullable=False)          # 'roadmap_structure', 'topic_generation', 'kb_generation', 'specificity_check', 'resource_search'
-    model_used = Column(String, nullable=False)          # 'qwen2.5:7b' or 'llama-3.3-70b-versatile'
+    model_used = Column(String, nullable=False)          # e.g. 'qwen2.5:7b' (Ollama) or 'openai/gpt-oss-120b' (Groq)
     provider = Column(String, nullable=False)            # 'ollama' or 'groq'
     prompt_messages = Column(JSONB, nullable=False)      # Full messages array sent to LLM
     raw_response = Column(Text, nullable=False)          # Raw text response from LLM

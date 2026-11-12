@@ -4,6 +4,7 @@ Allows viewing and editing KB entries per topic, and triggering LLM regeneration
 """
 import hashlib
 import json
+import uuid
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +41,7 @@ def _find_topic_meta(roadmap_data: dict, topic_id: str) -> dict:
 
 @router.get("/{roadmap_id}/knowledge-base")
 async def get_knowledge_base(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -65,7 +66,7 @@ async def get_knowledge_base(
 
 @router.get("/{roadmap_id}/knowledge-base/{topic_id}")
 async def get_kb_entry(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     topic_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -95,7 +96,7 @@ async def get_kb_entry(
 
 @router.patch("/{roadmap_id}/knowledge-base/{topic_id}")
 async def update_kb_entry(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     topic_id: str,
     body: dict,
     current_user: User = Depends(get_current_user),
@@ -149,7 +150,7 @@ async def update_kb_entry(
 
 @router.post("/{roadmap_id}/knowledge-base/{topic_id}/regenerate")
 async def regenerate_kb_entry(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     topic_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

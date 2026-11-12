@@ -1,0 +1,33 @@
+from openai import AsyncOpenAI, OpenAI
+
+from app.config import Settings
+from app.services import llm_client
+from app.services.llm_client import groq_client, groq_kwargs
+
+
+def test_groq_client_retries_rate_limits(monkeypatch):
+    # Use explicit settings so the test doesn't depend on a real GROQ_API_KEY in .env
+    # (CI has no .env, and the OpenAI SDK refuses to build a client without a key).
+    settings = Settings(
+        _env_file=None, secret_key="x", jwt_secret_key="y",
+        database_url="sqlite://", groq_api_key="test-key",
+    )
+    monkeypatch.setattr(llm_client, "get_settings", lambda: settings)
+    expected = settings.groq_max_retries
+    assert expected > 2  # more than the SDK default, to ride out 429s
+    client = groq_client()
+    assert isinstance(client, AsyncOpenAI)
+    assert client.max_retries == expected
+    sync_client = groq_client(async_client=False)
+    assert isinstance(sync_client, OpenAI)
+    assert sync_client.max_retries == expected
+
+
+def test_reasoning_models_get_token_headroom_and_low_effort():
+    args = groq_kwargs("openai/gpt-oss-120b", 200)
+    assert args["max_tokens"] > 200
+    assert args["extra_body"] == {"reasoning_effort": "low"}
+
+
+def test_non_reasoning_models_keep_requested_budget():
+    assert groq_kwargs("some/other-model", 200) == {"max_tokens": 200}

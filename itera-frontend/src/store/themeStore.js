@@ -27,7 +27,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 const useThemeStore = create((set) => ({
   theme: initialTheme,
   setTheme: (theme) => {
-    try { localStorage.setItem('itera-theme', theme) } catch {}
+    try { localStorage.setItem('itera-theme', theme) } catch { /* storage unavailable (private mode) */ }
     applyTheme(theme)
     set({ theme })
   },

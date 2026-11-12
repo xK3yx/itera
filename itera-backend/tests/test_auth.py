@@ -94,10 +94,11 @@ async def test_get_me_with_token(client):
     assert register.status_code == 201
     token = register.json()["access_token"]
 
-    # Verify token was issued correctly
-    assert token is not None
-    assert len(token) > 0
+    response = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert response.json()["email"] == "test@example.com"
 
-    # Verify the protected endpoint rejects requests without token
-    no_token_response = await client.get("/api/v1/auth/me")
-    assert no_token_response.status_code == 403
+
+async def test_get_me_with_invalid_token(client):
+    response = await client.get("/api/v1/auth/me", headers={"Authorization": "Bearer not-a-jwt"})
+    assert response.status_code == 401

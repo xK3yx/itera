@@ -515,7 +515,6 @@ export default function RoadmapView() {
             </div>
           )
         })}
-        ))}
       </div>
     </div>
   )
