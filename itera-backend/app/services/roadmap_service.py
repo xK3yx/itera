@@ -430,8 +430,8 @@ async def _generate_all_kb_entries(
     roadmap_id: str | None = None,
     db=None,
 ) -> list[dict]:
-    """Generate KB entries for all topics with max 5 concurrent LLM calls."""
-    semaphore = asyncio.Semaphore(5)
+    """Generate KB entries for all topics, limited to KB_CONCURRENCY concurrent LLM calls."""
+    semaphore = asyncio.Semaphore(max(1, get_settings().kb_concurrency))
 
     async def _one(item):
         async with semaphore:

@@ -9,7 +9,7 @@ import uuid
 import logging
 from typing import Optional
 
-from app.services.llm_client import async_chat_complete, extract_and_parse_json
+from app.services.llm_client import extract_and_parse_json
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -95,12 +95,11 @@ async def _call_ollama(messages: list, temperature: float, max_tokens: int) -> t
 
 async def _call_groq(messages: list, temperature: float, max_tokens: int) -> tuple[str, str, str]:
     """Returns (raw_response, model_used, provider)."""
-    from openai import AsyncOpenAI
     s = get_settings()
     if not s.groq_api_key:
         raise RuntimeError("Ollama is unreachable and GROQ_API_KEY is not configured")
-    from app.services.llm_client import groq_kwargs
-    client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=s.groq_api_key)
+    from app.services.llm_client import groq_client, groq_kwargs
+    client = groq_client()
     resp = await client.chat.completions.create(
         model=s.groq_model,
         messages=messages,
@@ -108,6 +107,23 @@ async def _call_groq(messages: list, temperature: float, max_tokens: int) -> tup
         **groq_kwargs(s.groq_model, max_tokens),
     )
     return (resp.choices[0].message.content or "").strip(), s.groq_model, "groq"
+
+
+_PROVIDER_CALLS = {"ollama": _call_ollama, "groq": _call_groq}
+
+
+async def _call_providers(messages: list, temperature: float, max_tokens: int) -> tuple[str, str, str]:
+    """Try each provider in LLM_PRIMARY order and return the first success."""
+    order = get_settings().llm_provider_order
+    last_err: Exception = RuntimeError("No LLM provider configured")
+    for i, name in enumerate(order):
+        try:
+            return await _PROVIDER_CALLS[name](messages, temperature, max_tokens)
+        except Exception as err:
+            last_err = err
+            if i + 1 < len(order):
+                logger.warning("[LLM] %s failed (%s) — falling back to %s", name, err, order[i + 1])
+    raise last_err
 
 
 # ---------- Main tracked call ----------
@@ -122,7 +138,7 @@ async def tracked_llm_call(
     db=None,
 ) -> dict:
     """
-    Wrapper around async_chat_complete that logs everything.
+    Call the LLM (LLM_PRIMARY first, then the fallback) and log everything.
     Returns: {"content": str, "log_id": str, "model": str, "provider": str, "latency_ms": int, "tokens_total": int}
     """
     start_time = time.time()
@@ -138,12 +154,7 @@ async def tracked_llm_call(
     est_input_tokens = max(1, len(input_text) // 4)
 
     try:
-        try:
-            raw_response, model_used, provider_used = await _call_ollama(messages, temperature, max_tokens)
-        except Exception as ollama_err:
-            logger.warning("[LLM] Ollama unreachable (%s) — falling back to Groq", ollama_err)
-            raw_response, model_used, provider_used = await _call_groq(messages, temperature, max_tokens)
-
+        raw_response, model_used, provider_used = await _call_providers(messages, temperature, max_tokens)
         parsed_ok = True
 
     except Exception as e:

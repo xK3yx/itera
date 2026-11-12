@@ -1,6 +1,6 @@
 """
-Unified LLM client — Ollama primary, Groq fallback.
-Uses the openai Python library as a drop-in for both.
+Shared LLM helpers: Groq client setup and JSON extraction from LLM output.
+The provider order (LLM_PRIMARY) lives in app/services/llm_tracker.py.
 """
 import json
 import re
@@ -25,6 +25,17 @@ def groq_kwargs(model: str, max_tokens: int) -> dict:
     if model.startswith("qwen/qwen3"):
         return {"max_tokens": max_tokens + 1024, "extra_body": {"reasoning_effort": "none"}}
     return {"max_tokens": max_tokens}
+
+
+def groq_client(async_client: bool = True):
+    """Build a Groq client that retries rate-limit (429) errors.
+
+    The OpenAI SDK waits for Groq's retry-after header between attempts,
+    so extra retries ride out the free tier's tokens-per-minute limit.
+    """
+    s = get_settings()
+    cls = AsyncOpenAI if async_client else OpenAI
+    return cls(base_url=_GROQ_BASE_URL, api_key=s.groq_api_key, max_retries=s.groq_max_retries)
 
 
 def extract_and_parse_json(raw_text: str) -> dict:
@@ -110,66 +121,3 @@ def extract_and_parse_json(raw_text: str) -> dict:
             return json.loads(cleaned)
         except json.JSONDecodeError:
             raise ValueError(f"Could not parse JSON from LLM output. Raw start: {raw_text[:500]}...")
-
-
-async def async_chat_complete(messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048) -> str:
-    """Call LLM with Ollama-first, Groq-fallback strategy. Returns raw text."""
-    s = get_settings()
-    kwargs = dict(messages=messages, temperature=temperature, max_tokens=max_tokens)
-
-    # Try Ollama first
-    try:
-        client = AsyncOpenAI(base_url=f"{s.ollama_base_url}/v1", api_key="ollama")
-        resp = await client.chat.completions.create(model=s.ollama_model, **kwargs)
-        logger.info("[LLM] Ollama (%s) responded successfully", s.ollama_model)
-        return resp.choices[0].message.content.strip()
-    except Exception as exc:
-        logger.warning("[LLM] Ollama unreachable (%s) — falling back to Groq", exc)
-
-    # Fallback to Groq
-    if not s.groq_api_key:
-        raise RuntimeError("Ollama is unreachable and GROQ_API_KEY is not configured")
-    client = AsyncOpenAI(base_url=_GROQ_BASE_URL, api_key=s.groq_api_key)
-    groq_args = {**kwargs, **groq_kwargs(s.groq_model, max_tokens)}
-    resp = await client.chat.completions.create(model=s.groq_model, **groq_args)
-    logger.info("[LLM] Groq (%s) responded successfully", s.groq_model)
-    return resp.choices[0].message.content.strip()
-
-
-def sync_chat_complete(messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048) -> str:
-    """Synchronous version of async_chat_complete."""
-    s = get_settings()
-    kwargs = dict(messages=messages, temperature=temperature, max_tokens=max_tokens)
-
-    try:
-        client = OpenAI(base_url=f"{s.ollama_base_url}/v1", api_key="ollama")
-        resp = client.chat.completions.create(model=s.ollama_model, **kwargs)
-        logger.info("[LLM] Ollama (%s) responded successfully (sync)", s.ollama_model)
-        return resp.choices[0].message.content.strip()
-    except Exception as exc:
-        logger.warning("[LLM] Ollama unreachable (%s) — falling back to Groq (sync)", exc)
-
-    if not s.groq_api_key:
-        raise RuntimeError("Ollama is unreachable and GROQ_API_KEY is not configured")
-    client = OpenAI(base_url=_GROQ_BASE_URL, api_key=s.groq_api_key)
-    groq_args = {**kwargs, **groq_kwargs(s.groq_model, max_tokens)}
-    resp = client.chat.completions.create(model=s.groq_model, **groq_args)
-    logger.info("[LLM] Groq (%s) responded successfully (sync)", s.groq_model)
-    return resp.choices[0].message.content.strip()
-
-
-async def llm_call_with_json_retry(messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048, max_retries: int = 2) -> dict:
-    """Call LLM and parse JSON response with retry on parse failure."""
-    msgs = [dict(m) for m in messages]  # shallow copy
-    for attempt in range(max_retries + 1):
-        response = await async_chat_complete(msgs, temperature=temperature, max_tokens=max_tokens)
-        try:
-            parsed = extract_and_parse_json(response)
-            logger.info("[LLM] JSON parsed successfully (attempt %d)", attempt + 1)
-            return parsed
-        except (ValueError, json.JSONDecodeError) as e:
-            if attempt < max_retries:
-                logger.warning("[LLM] JSON parse failed (attempt %d), retrying... Error: %s", attempt + 1, e)
-                msgs[-1]["content"] += "\n\nCRITICAL: Your previous response was not valid JSON. Return ONLY a valid JSON object. No markdown, no explanation, no text outside the JSON."
-            else:
-                raise ValueError(f"LLM failed to produce valid JSON after {max_retries + 1} attempts: {e}")
