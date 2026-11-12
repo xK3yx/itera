@@ -11,7 +11,20 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 _GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-_GROQ_MODEL = "llama-3.3-70b-versatile"
+
+
+def groq_kwargs(model: str, max_tokens: int) -> dict:
+    """Extra request options for Groq.
+
+    Reasoning models (gpt-oss, qwen3) spend output tokens on hidden reasoning
+    before answering, so keep reasoning short and leave headroom for it.
+    Otherwise a small max_tokens budget can produce an empty answer.
+    """
+    if model.startswith("openai/gpt-oss"):
+        return {"max_tokens": max_tokens + 1024, "extra_body": {"reasoning_effort": "low"}}
+    if model.startswith("qwen/qwen3"):
+        return {"max_tokens": max_tokens + 1024, "extra_body": {"reasoning_effort": "none"}}
+    return {"max_tokens": max_tokens}
 
 
 def extract_and_parse_json(raw_text: str) -> dict:
@@ -117,8 +130,9 @@ async def async_chat_complete(messages: list[dict], temperature: float = 0.7, ma
     if not s.groq_api_key:
         raise RuntimeError("Ollama is unreachable and GROQ_API_KEY is not configured")
     client = AsyncOpenAI(base_url=_GROQ_BASE_URL, api_key=s.groq_api_key)
-    resp = await client.chat.completions.create(model=_GROQ_MODEL, **kwargs)
-    logger.info("[LLM] Groq (%s) responded successfully", _GROQ_MODEL)
+    groq_args = {**kwargs, **groq_kwargs(s.groq_model, max_tokens)}
+    resp = await client.chat.completions.create(model=s.groq_model, **groq_args)
+    logger.info("[LLM] Groq (%s) responded successfully", s.groq_model)
     return resp.choices[0].message.content.strip()
 
 
@@ -138,8 +152,9 @@ def sync_chat_complete(messages: list[dict], temperature: float = 0.7, max_token
     if not s.groq_api_key:
         raise RuntimeError("Ollama is unreachable and GROQ_API_KEY is not configured")
     client = OpenAI(base_url=_GROQ_BASE_URL, api_key=s.groq_api_key)
-    resp = client.chat.completions.create(model=_GROQ_MODEL, **kwargs)
-    logger.info("[LLM] Groq (%s) responded successfully (sync)", _GROQ_MODEL)
+    groq_args = {**kwargs, **groq_kwargs(s.groq_model, max_tokens)}
+    resp = client.chat.completions.create(model=s.groq_model, **groq_args)
+    logger.info("[LLM] Groq (%s) responded successfully (sync)", s.groq_model)
     return resp.choices[0].message.content.strip()
 
 

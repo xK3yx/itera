@@ -30,7 +30,7 @@ Itera is an AI-powered personalized learning roadmap generator. Fill in your pro
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.12 + FastAPI (async) |
-| LLM | Ollama (local, any model) — Groq (llama-3.3-70b) as fallback |
+| LLM | Ollama (local, any model), with Groq (`openai/gpt-oss-120b`, configurable) as fallback |
 | Vector store | ChromaDB (semantic KB search) |
 | Database | PostgreSQL 15 |
 | ORM | SQLAlchemy (async) + Alembic |
@@ -70,7 +70,8 @@ All settings live in `itera-backend/.env` (start from `.env.example`). The impor
 | `SECRET_KEY`, `JWT_SECRET_KEY` | Yes | Long random strings |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Yes | Database credentials; Docker Compose builds `DATABASE_URL` from these |
 | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | One LLM required | Local LLM, tried first (default model `qwen2.5:7b`) |
-| `GROQ_API_KEY` | One LLM required | Fallback LLM (`llama-3.3-70b-versatile`) when Ollama is unreachable |
+| `GROQ_API_KEY` | One LLM required | Fallback LLM when Ollama is unreachable |
+| `GROQ_MODEL` | Optional | Groq model to use (default `openai/gpt-oss-120b`). Groq retires models periodically |
 | `YOUTUBE_API_KEY` | Optional | YouTube Data API v3; falls back to search links when unset or over quota |
 | `ADMIN_EMAILS` | Optional | Comma-separated emails allowed to use `/api/v3/admin/*`. Empty disables admin endpoints |
 | `CORS_ORIGINS` | Optional | Comma-separated frontend origins (defaults cover local development) |

@@ -30,8 +30,9 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://host.docker.internal:11434"
     ollama_model: str = "qwen2.5:7b"
 
-    # Groq (fallback LLM)
+    # Groq (fallback LLM). Groq retires models regularly; override via GROQ_MODEL.
     groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
 
     # YouTube
     youtube_api_key: str = ""

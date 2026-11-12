@@ -99,14 +99,15 @@ async def _call_groq(messages: list, temperature: float, max_tokens: int) -> tup
     s = get_settings()
     if not s.groq_api_key:
         raise RuntimeError("Ollama is unreachable and GROQ_API_KEY is not configured")
+    from app.services.llm_client import groq_kwargs
     client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=s.groq_api_key)
     resp = await client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=s.groq_model,
         messages=messages,
         temperature=temperature,
-        max_tokens=max_tokens,
+        **groq_kwargs(s.groq_model, max_tokens),
     )
-    return resp.choices[0].message.content.strip(), "llama-3.3-70b-versatile", "groq"
+    return (resp.choices[0].message.content or "").strip(), s.groq_model, "groq"
 
 
 # ---------- Main tracked call ----------
