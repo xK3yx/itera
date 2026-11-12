@@ -4,6 +4,7 @@ Tab A: LLM call logs
 Tab B: Progress validation logs
 Tab C: KB quality per roadmap
 """
+import uuid
 import logging
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,7 @@ from sqlalchemy import select, func, and_
 from typing import Optional
 
 from app.database import get_db
-from app.middleware.auth_middleware import get_current_user
+from app.middleware.auth_middleware import get_admin_user
 from app.models.user import User
 from app.models.llm_call_log import LLMCallLog
 from app.models.roadmap_enrollment import TopicProgressLog, RoadmapEnrollment
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/api/v3/admin", tags=["Admin v3"])
 
 @router.post("/reindex-all")
 async def reindex_all(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Re-index all roadmaps' KB entries in ChromaDB with the rich format."""
@@ -44,7 +45,7 @@ async def list_llm_logs(
     roadmap_id: Optional[str] = Query(None),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     q = select(LLMCallLog).order_by(LLMCallLog.created_at.desc())
@@ -72,7 +73,7 @@ async def list_llm_logs(
 
 @router.get("/llm-logs/summary")
 async def llm_logs_summary(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -122,7 +123,7 @@ async def list_progress_logs(
     passed: Optional[bool] = Query(None),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     q = (
@@ -156,8 +157,8 @@ async def list_progress_logs(
 
 @router.get("/kb-quality/{roadmap_id}")
 async def kb_quality(
-    roadmap_id: str,
-    current_user: User = Depends(get_current_user),
+    roadmap_id: uuid.UUID,
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     kb_result = await db.execute(select(KnowledgeBase).where(KnowledgeBase.roadmap_id == roadmap_id))

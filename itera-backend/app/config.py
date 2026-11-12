@@ -10,14 +10,21 @@ _ENV_FILE = str(Path(__file__).parent.parent / ".env")
 class Settings(BaseSettings):
     # App
     app_name: str = "Itera"
-    debug: bool = True
+    debug: bool = False
     secret_key: str
 
     # Database
     database_url: str
 
-    # Redis
-    redis_url: str = "redis://redis:6379/0"
+    # CORS: comma-separated list of allowed frontend origins
+    cors_origins: str = "http://localhost,http://localhost:80,http://localhost:5173"
+
+    # Admin: comma-separated emails allowed to use /api/v3/admin/* endpoints.
+    # Empty means admin endpoints are disabled for everyone.
+    admin_emails: str = ""
+
+    # ChromaDB persistence directory (mounted as a volume in Docker)
+    chroma_path: str = "./chroma_data"
 
     # Ollama (primary LLM)
     ollama_base_url: str = "http://host.docker.internal:11434"
@@ -33,6 +40,14 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
 
     class Config:
         env_file = _ENV_FILE

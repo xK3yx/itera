@@ -11,7 +11,8 @@ def _get_client():
     global _client
     if _client is None:
         import chromadb
-        _client = chromadb.PersistentClient(path="./chroma_data")
+        from app.config import get_settings
+        _client = chromadb.PersistentClient(path=get_settings().chroma_path)
     return _client
 
 

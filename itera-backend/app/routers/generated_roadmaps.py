@@ -1,3 +1,4 @@
+import uuid
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -58,7 +59,10 @@ async def generate_roadmap(
         return {"data": _roadmap_to_dict(rm)}
     except Exception as exc:
         logger.error("[Roadmap] Generation failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Roadmap generation failed: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Roadmap generation failed. Check that Ollama or Groq is reachable and try again.",
+        )
 
 
 @router.get("/")
@@ -77,7 +81,7 @@ async def list_roadmaps(
 
 @router.get("/{roadmap_id}")
 async def get_roadmap(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -95,7 +99,7 @@ async def get_roadmap(
 
 @router.delete("/{roadmap_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_roadmap(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

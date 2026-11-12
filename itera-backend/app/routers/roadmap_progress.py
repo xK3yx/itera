@@ -1,4 +1,5 @@
 """5-layer progress logging pipeline."""
+import uuid
 import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,7 +29,7 @@ class LogProgressRequest(BaseModel):
 
 @router.post("/{roadmap_id}/enroll")
 async def enroll_in_roadmap(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -71,7 +72,7 @@ async def enroll_in_roadmap(
 
 @router.get("/{roadmap_id}/enrollment")
 async def get_enrollment(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -94,7 +95,7 @@ async def get_enrollment(
 
 @router.post("/{roadmap_id}/topics/{topic_id}/log")
 async def log_progress(
-    roadmap_id: str,
+    roadmap_id: uuid.UUID,
     topic_id: str,
     request: LogProgressRequest,
     current_user: User = Depends(get_current_user),
