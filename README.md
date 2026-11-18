@@ -4,6 +4,12 @@
 
 Itera is an AI-powered personalized learning roadmap generator. Fill in your profile — current role, target role, tech stack, experience — and Itera generates a structured, phase-by-phase learning roadmap with curated free and paid resources for every topic, time estimates split by learning path, and a semantic knowledge base used to validate your progress logs.
 
+## Demo
+
+![Itera demo: generating a Data Engineer roadmap, enrolling, opening a topic's resources, and logging progress that passes validation](docs/demo.gif)
+
+*Recorded live on a local Docker setup with Groq. The waits for roadmap generation and the progress check are sped up 10x.*
+
 ## Features
 
 ### Roadmap Generation
