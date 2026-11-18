@@ -1,6 +1,6 @@
 # Itera
 
-[![CI](https://github.com/xK3yx/itera/actions/workflows/ci.yml/badge.svg)](https://github.com/xK3yx/itera/actions/workflows/ci.yml)
+[![CI](https://github.com/xK3yx/itera/actions/workflows/ci.yml/badge.svg)](https://github.com/xK3yx/itera/actions/workflows/ci.yml) ![AI](https://img.shields.io/badge/AI-Groq%20%2B%20Ollama-6366f1?style=flat-square) ![Stack](https://img.shields.io/badge/Stack-FastAPI%20%2B%20React-10b981?style=flat-square) ![License](https://img.shields.io/badge/License-MIT-f59e0b?style=flat-square)
 
 Itera is an AI-powered personalized learning roadmap generator. Fill in your profile — current role, target role, tech stack, experience — and Itera generates a structured, phase-by-phase learning roadmap with curated free and paid resources for every topic, time estimates split by learning path, and a semantic knowledge base used to validate your progress logs.
 
