@@ -131,14 +131,22 @@ async def _generate_topics_for_skill_area(
 # ---------- Step 3: Search real resources per topic ----------
 
 async def _search_topic_resources(topic: dict, include_paid: bool, db=None, context: tuple[str, ...] = ()) -> list[dict]:
+    resources, _ = await _search_topic_resources_with_status(topic, include_paid, db=db, context=context)
+    return resources
+
+
+async def _search_topic_resources_with_status(
+    topic: dict, include_paid: bool, db=None, context: tuple[str, ...] = ()
+) -> tuple[list[dict], bool]:
     """Find real, English, on-topic resources for one topic (see resource_search).
     `context` is the skill area, phase and target role, used to work out the topic's
-    programming language. Results are cached by the final search query."""
+    programming language. Results are cached by the final search query.
+    Also returns whether every lookup succeeded (False when e.g. the YouTube quota is used up)."""
     from sqlalchemy import select, update
     settings = get_settings()
     base_query = topic.get("search_query") or topic["title"]
     language = resource_search.topic_language(topic["title"], base_query, *context)
-    query = resource_search.build_query(base_query, language)
+    query = resource_search.short_query(topic["title"], language)
     cache_key = f"{resource_search.RULES_VERSION}|{query}"
 
     # --- Cache lookup ---
@@ -160,16 +168,18 @@ async def _search_topic_resources(topic: dict, include_paid: bool, db=None, cont
                 logger.info("[Resources] Cache HIT for query '%s' (hits: %d)", query, cached_row.hit_count + 1)
                 all_resources = cached_row.resources
                 if include_paid:
-                    return all_resources
-                return [r for r in all_resources if r.get("type") == "free"]
+                    return all_resources, True
+                return [r for r in all_resources if r.get("type") == "free"], True
         except Exception as e:
             logger.warning("[Resources] Cache lookup failed: %s", e)
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resources = await resource_search.find_resources(client, settings.youtube_api_key, query, language)
+        resources, complete = await resource_search.find_resources(
+            client, settings.youtube_api_key, query, language)
 
-    # --- Cache write (always store all resources, both free+paid) ---
-    if db is not None:
+    # --- Cache write (all resources, free + paid). Results from a failed lookup are
+    # not cached, so a used-up quota does not leave fallback links behind for good.
+    if db is not None and complete:
         try:
             import uuid as _uuid
             db.add(ResourceCache(
@@ -183,8 +193,8 @@ async def _search_topic_resources(topic: dict, include_paid: bool, db=None, cont
             logger.warning("[Resources] Cache write failed: %s", e)
 
     if include_paid:
-        return resources
-    return [r for r in resources if r.get("type") == "free"]
+        return resources, complete
+    return [r for r in resources if r.get("type") == "free"], complete
 
 
 # ---------- Step 4: Stamp topic IDs + split free/paid hours ----------
@@ -478,6 +488,7 @@ async def generate_roadmap(
 
     async def _attach(topic, context):
         topic["resources"] = await _search_topic_resources(topic, include_paid, db=db, context=context)
+        topic["resources_version"] = resource_search.RULES_VERSION
 
     await asyncio.gather(*[_attach(t, ctx) for t, ctx in all_topics])
     logger.info("[Roadmap] Resources attached for %d topics", len(all_topics))
@@ -521,26 +532,38 @@ async def generate_roadmap(
     return rm
 
 
-async def refresh_roadmap_resources(db: AsyncSession, rm: GeneratedRoadmap) -> int:
-    """Re-fetch every topic's resources in a saved roadmap with the current rules. Returns topics updated."""
+async def refresh_roadmap_resources(db: AsyncSession, rm: GeneratedRoadmap) -> tuple[int, bool]:
+    """Re-fetch resources for topics found with older rules. Returns (topics updated, finished).
+
+    Stops at the first topic whose lookups fail (usually the daily YouTube quota) and keeps
+    that topic's old links, so running it again later picks up where it left off.
+    """
     import copy
     from sqlalchemy.orm.attributes import flag_modified
 
     data = copy.deepcopy(rm.roadmap_data)
-    jobs = []
+    updated, finished = 0, True
     for phase in data.get("phases", []):
         for skill_area in phase.get("skill_areas", []):
             context = (skill_area.get("title", ""), phase.get("title", ""), rm.target_role or "")
             for topic in skill_area.get("topics", []):
-                jobs.append((topic, context))
-
-    async def _one(topic, context):
-        topic["resources"] = await _search_topic_resources(topic, rm.include_paid, db=db, context=context)
-
-    # Sequential: the cache write needs the session, and AsyncSession is not safe for concurrent use.
-    for topic, context in jobs:
-        await _one(topic, context)
-        await db.flush()
-    rm.roadmap_data = data
-    flag_modified(rm, "roadmap_data")
-    return len(jobs)
+                if topic.get("resources_version") == resource_search.RULES_VERSION:
+                    continue
+                # Sequential: the cache write shares the session, which is not safe for concurrent use.
+                resources, complete = await _search_topic_resources_with_status(
+                    topic, rm.include_paid, db=db, context=context)
+                if not complete:
+                    finished = False
+                    break
+                topic["resources"] = resources
+                topic["resources_version"] = resource_search.RULES_VERSION
+                updated += 1
+                await db.flush()
+            if not finished:
+                break
+        if not finished:
+            break
+    if updated:
+        rm.roadmap_data = data
+        flag_modified(rm, "roadmap_data")
+    return updated, finished

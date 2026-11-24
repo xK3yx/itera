@@ -48,10 +48,14 @@ def test_topic_language_comes_from_topic_then_context():
     assert rs.topic_language("Version control with Git", "", "Team workflow") is None
 
 
-def test_build_query_adds_the_language_once():
-    assert rs.build_query("intro to variables and data types", "python") == "intro to variables and data types python"
-    assert rs.build_query("python decorators", "python") == "python decorators"
-    assert rs.build_query("git branching", None) == "git branching"
+def test_short_query_is_short_and_names_the_language():
+    assert rs.short_query("Understanding Variables and Data Types", "python") == "variables data types python"
+    assert rs.short_query("Advanced Data Structures and Algorithms in Python", "python") == \
+        "advanced data structures algorithms python"
+    assert rs.short_query("Git Branching Strategies", None) == "git branching strategies"
+    assert len(rs.short_query("a b c d e f g h i j k l m n o p", None).split()) <= 5
+
+
 
 
 def test_rejects_a_course_in_a_different_language():
@@ -111,7 +115,8 @@ def test_iso_durations():
 
 # ---------- End to end against a fake YouTube API ----------
 
-def _fake_youtube(playlists, fcc_videos, details):
+def _fake_youtube(playlists, fcc_videos, details, first_videos=None):
+    first_videos = first_videos or {}
     def handler(request: httpx.Request) -> httpx.Response:
         p = request.url.params
         assert p.get("key") == "test-key"
@@ -125,13 +130,20 @@ def _fake_youtube(playlists, fcc_videos, details):
             else:
                 items = []
             return httpx.Response(200, json={"items": items})
+        if path.endswith("/playlistItems"):
+            first = first_videos.get(p["playlistId"])
+            return httpx.Response(200, json={"items": [{"contentDetails": {"videoId": first}}] if first else []})
+        if path.endswith("/channels"):
+            return httpx.Response(200, json={"items": [
+                {"id": cid, "statistics": {"subscriberCount": "1000"}} for cid in p["id"].split(",")]})
         ids = p["id"].split(",")
         return httpx.Response(200, json={"items": [details[i] for i in ids if i in details]})
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
 def _pl(pid, title, channel):
-    return {"id": {"playlistId": pid}, "snippet": {"title": title, "description": "", "channelTitle": channel}}
+    return {"id": {"playlistId": pid},
+            "snippet": {"title": title, "description": "", "channelTitle": channel, "channelId": "ch-" + channel}}
 
 
 def _vd(vid, title, channel="freeCodeCamp.org"):
@@ -145,18 +157,22 @@ async def test_find_resources_end_to_end():
         _pl("hindi", "Python Full Course in Hindi", "Desi Coder"),
         _pl("good", "Python Programming Full Course", "Corey Schafer"),
         _pl("ok", "Python Variables and Data Types", "Small Channel"),
+        _pl("hindiaudio", "Python Language Full Course", "Hindi Audio Channel"),
     ]
     fcc = [_vd("short", "Python variables in 5 minutes"), _vd("course", "Python for Beginners – Full Course")]
     details = {
         "good": {"id": "good", "snippet": {}, "contentDetails": {"itemCount": 40}},
         "ok": {"id": "ok", "snippet": {"defaultLanguage": "en"}, "contentDetails": {"itemCount": 3}},
+        "hindiaudio": {"id": "hindiaudio", "snippet": {}, "contentDetails": {"itemCount": 60}},
+        "hv1": {"id": "hv1", "snippet": {"defaultAudioLanguage": "hi"}},
         "short": {"id": "short", "snippet": {}, "contentDetails": {"duration": "PT5M"}, "statistics": {"viewCount": "9"}},
         "course": {"id": "course", "snippet": {"defaultAudioLanguage": "en"},
                    "contentDetails": {"duration": "PT4H26M"}, "statistics": {"viewCount": "4000000"}},
     }
-    async with _fake_youtube(playlists, fcc, details) as client:
-        out = await rs.find_resources(client, "test-key", "intro to variables and data types python", "python")
+    async with _fake_youtube(playlists, fcc, details, first_videos={"hindiaudio": "hv1"}) as client:
+        out, complete = await rs.find_resources(client, "test-key", "variables data types python", "python")
 
+    assert complete
     youtube = [r for r in out if r["platform"] == "YouTube"]
     assert [r["url"] for r in youtube] == [
         "https://www.youtube.com/playlist?list=good",
@@ -170,7 +186,8 @@ async def test_find_resources_end_to_end():
 
 @pytest.mark.asyncio
 async def test_fallbacks_are_honest_and_never_empty_pages():
-    out = await rs.find_resources(None, "", "docker networking", None)  # no API key
+    out, complete = await rs.find_resources(None, "", "docker networking", None)  # no API key
+    assert not complete
     by_platform = {r["platform"]: r for r in out}
     assert by_platform["YouTube"]["format"] == "search"
     assert "in+English" in by_platform["YouTube"]["url"]
@@ -184,6 +201,16 @@ async def test_api_errors_fall_back_instead_of_failing():
     def handler(request):
         return httpx.Response(403, json={"error": "quotaExceeded"})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        out = await rs.find_resources(client, "test-key", "docker networking", None)
+        out, complete = await rs.find_resources(client, "test-key", "docker networking", None)
+    assert not complete  # so the caller does not cache these fallbacks
     assert {r["platform"] for r in out} == {"YouTube", "freeCodeCamp", "Coursera", "Udemy"}
     assert all(r["format"] in ("search", "browse") for r in out)
+
+
+def test_a_shared_phrase_beats_a_shared_generic_word():
+    q = "variables data types python"
+    picked = rs.select([
+        _video("Data Analysis with Python: Part 1", "Chan A", vid="analysis"),
+        _video("Python Data Types and Variables - Full Course", "Chan B", vid="types"),
+    ], q, "python", limit=1)
+    assert picked[0]["id"] == "types"

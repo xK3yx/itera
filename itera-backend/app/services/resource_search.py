@@ -12,6 +12,7 @@ returns, so we ask for 10 and filter ourselves. The detail lookups
 """
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 import math
@@ -80,6 +81,9 @@ _STOPWORDS = {
     "intro", "introduction", "basics", "basic", "beginner", "beginners", "tutorial", "tutorials",
     "course", "courses", "full", "guide", "learn", "learning", "programming", "complete",
     "fundamentals", "using", "your", "from", "into", "via", "best", "practice", "practical",
+    "understanding", "mastering", "working", "getting", "started", "overview", "essentials",
+    "core", "concepts", "key", "effective", "modern", "hands", "exploring", "deep", "dive",
+    "implementing", "building", "applying", "techniques", "principles", "part",
 }
 
 
@@ -103,13 +107,6 @@ def topic_language(*texts: str) -> str | None:
     return None
 
 
-def build_query(query: str, language: str | None) -> str:
-    """Make sure the search names the topic's language, so 'variables and data types' becomes a Python search."""
-    if language and language not in languages_in(query):
-        return f"{query} {language}"
-    return query
-
-
 def is_english_title(title: str) -> bool:
     """English titles use ASCII letters only and carry no other-language marker words."""
     if any(ch.isalpha() and not ch.isascii() for ch in title):
@@ -123,9 +120,32 @@ def is_english_metadata(*language_codes: str | None) -> bool:
     return all(c.lower().startswith("en") for c in codes)
 
 
+def keyword_list(text: str) -> list[str]:
+    """Meaningful words in order, without duplicates."""
+    out: list[str] = []
+    for w in re.findall(r"[a-z0-9+#.]+", (text or "").lower()):
+        w = w.strip(".")
+        if (len(w) > 2 or w in LANGUAGES) and w not in _STOPWORDS and w not in out:
+            out.append(w)
+    return out
+
+
 def keywords(text: str) -> set[str]:
-    words = re.findall(r"[a-z0-9+#.]+", (text or "").lower())
-    return {w.strip(".") for w in words if len(w) > 2 and w not in _STOPWORDS}
+    return set(keyword_list(text))
+
+
+def phrases(text: str) -> set[str]:
+    """Adjacent keyword pairs, e.g. 'data types', so a shared generic word like 'data' is not enough."""
+    words = keyword_list(text)
+    return {f"{a} {b}" for a, b in zip(words, words[1:])}
+
+
+def short_query(title: str, language: str | None, max_words: int = 5) -> str:
+    """A short search built from the topic title. Long, very specific queries return nothing on YouTube."""
+    words = [w for w in keyword_list(title) if w != language][:max_words]
+    if language:
+        words.append(language)
+    return " ".join(words) or (title or "").strip()
 
 
 def is_on_topic(title: str, description: str, query: str, language: str | None) -> bool:
@@ -156,18 +176,22 @@ def _iso_minutes(duration: str) -> float:
 
 def score(candidate: dict, query: str) -> float:
     """Higher is better. Trusted educators first, then real courses, then topic fit and popularity."""
+    title = candidate["title"]
     s = 0.0
     if is_trusted(candidate.get("channel", "")):
         s += 5
     if candidate["format"] == "playlist":
         items = candidate.get("item_count") or 0
-        s += 2 if items >= 5 else (0 if items else 0.5)
+        s += 2 if items >= 5 else (0.5 if items == 0 else 0)
     else:
         minutes = candidate.get("minutes", 0)
         s += 2 if minutes >= 40 else (1 if minutes >= 20 else -2)
-        views = candidate.get("views") or 0
-        s += min(math.log10(views + 1) / 2, 3)
-    s += min(len(keywords(query) & keywords(candidate["title"])), 3) * 0.5
+        s += min(math.log10((candidate.get("views") or 0) + 1) / 2, 4)
+    s += min(math.log10((candidate.get("subscribers") or 0) + 1) / 2, 4)
+    s += min(len(keywords(query) & keywords(title)), 3) * 0.5
+    s += 1.5 if phrases(query) & phrases(title) else 0
+    s += 1 if languages_in(query) & languages_in(title) else 0
+    s += 0.5 if re.search(r"full course|complete course|for beginners", title, re.I) else 0
     return s
 
 
@@ -211,6 +235,7 @@ async def _yt_search(client: httpx.AsyncClient, key: str, q: str, kind: str, **e
             "title": html.unescape(sn.get("title", "")),
             "description": html.unescape(sn.get("description", "")),
             "channel": html.unescape(sn.get("channelTitle", "")),
+            "channel_id": sn.get("channelId"),
             "languages": [],
         })
     return [c for c in out if c["id"]]
@@ -243,6 +268,43 @@ async def _yt_details(client: httpx.AsyncClient, key: str, candidates: list[dict
             c["views"] = int(it.get("statistics", {}).get("viewCount", 0) or 0)
 
 
+async def _playlist_audio_language(client: httpx.AsyncClient, key: str, candidates: list[dict]) -> None:
+    """Playlists carry no audio language, so read it from each playlist's first video (about 1 unit each)."""
+    async def first_video(c):
+        resp = await client.get(f"{YT_API}/playlistItems", params={
+            "part": "contentDetails", "playlistId": c["id"], "maxResults": 1, "key": key})
+        if resp.status_code != 200:
+            return None
+        items = resp.json().get("items", [])
+        return items[0]["contentDetails"].get("videoId") if items else None
+
+    firsts = await asyncio.gather(*[first_video(c) for c in candidates])
+    ids = {vid: c for vid, c in zip(firsts, candidates) if vid}
+    if not ids:
+        return
+    resp = await client.get(f"{YT_API}/videos", params={"part": "snippet", "id": ",".join(ids), "key": key})
+    if resp.status_code != 200:
+        return
+    for it in resp.json().get("items", []):
+        sn = it.get("snippet", {})
+        ids[it["id"]]["languages"] += [sn.get("defaultAudioLanguage"), sn.get("defaultLanguage")]
+
+
+async def _channel_subscribers(client: httpx.AsyncClient, key: str, candidates: list[dict]) -> None:
+    """Channel size as a quality signal, in one batched call (1 unit)."""
+    channel_ids = list({c["channel_id"] for c in candidates if c.get("channel_id")})
+    if not channel_ids:
+        return
+    resp = await client.get(f"{YT_API}/channels", params={
+        "part": "statistics", "id": ",".join(channel_ids[:50]), "key": key})
+    if resp.status_code != 200:
+        return
+    subs = {it["id"]: int(it.get("statistics", {}).get("subscriberCount", 0) or 0)
+            for it in resp.json().get("items", [])}
+    for c in candidates:
+        c["subscribers"] = subs.get(c.get("channel_id"), 0)
+
+
 def _youtube_resource(c: dict) -> dict:
     if c["format"] == "playlist":
         url = f"https://www.youtube.com/playlist?list={c['id']}"
@@ -255,21 +317,32 @@ def _youtube_resource(c: dict) -> dict:
 async def find_youtube(client, key: str, query: str, language: str | None) -> list[dict]:
     """Up to two ranked, English, on-topic YouTube courses (playlists first, then long videos)."""
     playlists = await _yt_search(client, key, f"{query} full course", "playlist")
+    playlists = [c for c in playlists if _passes_text_checks(c, query, language)]
     await _yt_details(client, key, playlists)
+    await _playlist_audio_language(client, key, playlists)
+    await _channel_subscribers(client, key, playlists)
     picked = select(playlists, query, language, limit=2)
     if not picked:
         videos = await _yt_search(client, key, f"{query} full course", "video", videoDuration="long")
+        videos = [c for c in videos if _passes_text_checks(c, query, language)]
         await _yt_details(client, key, videos)
+        await _channel_subscribers(client, key, videos)
         picked = select(videos, query, language, limit=2)
     return [_youtube_resource(c) for c in picked]
 
 
+def _passes_text_checks(c: dict, query: str, language: str | None) -> bool:
+    """The free checks, run before spending quota on details."""
+    return is_english_title(c["title"]) and is_on_topic(c["title"], c.get("description", ""), query, language)
+
+
 async def find_freecodecamp(client, key: str, query: str, language: str | None) -> dict | None:
     """A real freeCodeCamp course from its YouTube channel, where most of its full courses live."""
-    videos = await _yt_search(client, key, query, "video", channelId=FREECODECAMP_CHANNEL_ID)
-    await _yt_details(client, key, videos)
-    long_enough = [v for v in videos if v.get("minutes", 0) >= 20]
-    picked = select(long_enough, query, language, limit=1)
+    picked = await _freecodecamp_search(client, key, query, query, language)
+    if not picked and language and query != language:
+        # Nothing on this exact topic: take freeCodeCamp's best course for the language,
+        # still ranked by how well it fits the topic.
+        picked = await _freecodecamp_search(client, key, language, query, language)
     if not picked:
         return None
     v = picked[0]
@@ -277,20 +350,35 @@ async def find_freecodecamp(client, key: str, query: str, language: str | None) 
             "url": f"https://www.youtube.com/watch?v={v['id']}", "type": "free", "format": "video"}
 
 
+async def _freecodecamp_search(client, key: str, q: str, topic_query: str, language: str | None) -> list[dict]:
+    videos = await _yt_search(client, key, q, "video", channelId=FREECODECAMP_CHANNEL_ID)
+    await _yt_details(client, key, videos)
+    long_enough = [v for v in videos if v.get("minutes", 0) >= 20]
+    return select(long_enough, topic_query, language, limit=1)
+
+
 # ---------- Public entry point ----------
 
-async def find_resources(client: httpx.AsyncClient, yt_key: str, query: str, language: str | None) -> list[dict]:
-    """All resources for one topic. `query` should already name the topic's language (see build_query)."""
+async def find_resources(client: httpx.AsyncClient, yt_key: str, query: str, language: str | None) -> tuple[list[dict], bool]:
+    """All resources for one topic, and whether every API lookup succeeded.
+
+    `query` should be short and name the topic's language (see short_query). When a
+    lookup fails (no key, quota used up, network), honest fallback links are returned
+    and `complete` is False, so the caller does not cache them as final.
+    """
     resources: list[dict] = []
     fcc = None
+    complete = bool(yt_key)
     if yt_key:
         try:
             resources += await find_youtube(client, yt_key, query, language)
         except Exception as e:
+            complete = False
             logger.warning("[Resources] YouTube search failed for '%s': %s", query, e)
         try:
             fcc = await find_freecodecamp(client, yt_key, query, language)
         except Exception as e:
+            complete = False
             logger.warning("[Resources] freeCodeCamp search failed for '%s': %s", query, e)
 
     if not any(r["platform"] == "YouTube" for r in resources):
@@ -325,4 +413,4 @@ async def find_resources(client: httpx.AsyncClient, yt_key: str, query: str, lan
         "type": "paid",
         "format": "search",
     })
-    return resources
+    return resources, complete
