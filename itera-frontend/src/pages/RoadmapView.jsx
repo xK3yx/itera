@@ -58,7 +58,7 @@ function decodeEntities(text) {
 
 function ResourceChip({ r }) {
   const title = decodeEntities(r.title || '')
-  const formatLabel = r.format === 'playlist' ? 'Playlist' : r.format === 'video' ? 'Video' : null
+  const formatLabel = { playlist: 'Playlist', video: 'Video', search: 'Search' }[r.format] || null
   return (
     <a
       href={r.url} target="_blank" rel="noopener noreferrer"
