@@ -3,11 +3,10 @@ v3 Roadmap generation service.
 Breaks generation into small LLM calls that 7B models can handle.
 """
 import logging
-import html
 import asyncio
 import httpx
-from urllib.parse import quote_plus
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services import resource_search
 from app.services.llm_tracker import tracked_llm_call_with_json_retry
 from app.models.generated_roadmap import GeneratedRoadmap, KnowledgeBase
 from app.models.resource_cache import ResourceCache
@@ -131,25 +130,28 @@ async def _generate_topics_for_skill_area(
 
 # ---------- Step 3: Search real resources per topic ----------
 
-async def _search_topic_resources(topic: dict, include_paid: bool, db=None) -> list[dict]:
-    """Search YouTube playlists + freeCodeCamp + Coursera + Udemy for a single topic.
-    Results are cached in resource_cache by search_query to avoid re-fetching."""
+async def _search_topic_resources(topic: dict, include_paid: bool, db=None, context: tuple[str, ...] = ()) -> list[dict]:
+    """Find real, English, on-topic resources for one topic (see resource_search).
+    `context` is the skill area, phase and target role, used to work out the topic's
+    programming language. Results are cached by the final search query."""
     from sqlalchemy import select, update
     settings = get_settings()
-    resources = []
-    query = topic.get("search_query", topic["title"])
+    base_query = topic.get("search_query") or topic["title"]
+    language = resource_search.topic_language(topic["title"], base_query, *context)
+    query = resource_search.build_query(base_query, language)
+    cache_key = f"{resource_search.RULES_VERSION}|{query}"
 
     # --- Cache lookup ---
     if db is not None:
         try:
             cached = await db.execute(
-                select(ResourceCache).where(ResourceCache.search_query == query)
+                select(ResourceCache).where(ResourceCache.search_query == cache_key)
             )
             cached_row = cached.scalar_one_or_none()
             if cached_row is not None:
                 await db.execute(
                     update(ResourceCache)
-                    .where(ResourceCache.search_query == query)
+                    .where(ResourceCache.search_query == cache_key)
                     .values(
                         hit_count=ResourceCache.hit_count + 1,
                         last_used_at=sa_now(),
@@ -164,100 +166,7 @@ async def _search_topic_resources(topic: dict, include_paid: bool, db=None) -> l
             logger.warning("[Resources] Cache lookup failed: %s", e)
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # YouTube — try API first, fall back to search URL if quota exceeded or key missing
-        yt_key = settings.youtube_api_key if hasattr(settings, 'youtube_api_key') else getattr(settings, 'YOUTUBE_API_KEY', '')
-        yt_api_ok = False
-        if yt_key:
-            yt_query = f"{query} full course tutorial playlist"
-            try:
-                resp = await client.get(
-                    "https://www.googleapis.com/youtube/v3/search",
-                    params={
-                        "part": "snippet",
-                        "q": yt_query,
-                        "type": "playlist",
-                        "maxResults": 2,
-                        "key": yt_key,
-                    },
-                )
-                if resp.status_code == 200:
-                    items = resp.json().get("items", [])
-                    for item in items[:2]:
-                        playlist_id = item["id"]["playlistId"]
-                        resources.append({
-                            "title": html.unescape(item["snippet"]["title"]),
-                            "platform": "YouTube",
-                            "url": f"https://www.youtube.com/playlist?list={playlist_id}",
-                            "type": "free",
-                            "format": "playlist",
-                        })
-                    if items:
-                        yt_api_ok = True
-
-                # Fallback: if no playlists found, search for long-form videos (>20 min)
-                if not any(r["platform"] == "YouTube" for r in resources) and resp.status_code == 200:
-                    resp = await client.get(
-                        "https://www.googleapis.com/youtube/v3/search",
-                        params={
-                            "part": "snippet",
-                            "q": f"{query} full course tutorial",
-                            "type": "video",
-                            "videoDuration": "long",
-                            "maxResults": 1,
-                            "key": yt_key,
-                        },
-                    )
-                    if resp.status_code == 200:
-                        items = resp.json().get("items", [])
-                        if items:
-                            vid = items[0]
-                            resources.append({
-                                "title": html.unescape(vid["snippet"]["title"]),
-                                "platform": "YouTube",
-                                "url": f"https://www.youtube.com/watch?v={vid['id']['videoId']}",
-                                "type": "free",
-                                "format": "video",
-                            })
-                            yt_api_ok = True
-
-                if resp.status_code == 403:
-                    logger.warning("[Resources] YouTube API quota exceeded — using search URL fallback")
-            except Exception as e:
-                logger.warning("[Resources] YouTube API failed: %s — using search URL fallback", e)
-
-        # YouTube fallback: always guarantee a YouTube search link if API didn't return results
-        if not yt_api_ok:
-            resources.append({
-                "title": f"YouTube: {query} — full course",
-                "platform": "YouTube",
-                "url": f"https://www.youtube.com/results?search_query={quote_plus(query + ' full course tutorial')}",
-                "type": "free",
-                "format": "search",
-            })
-
-        # freeCodeCamp — always include a search link (100% free, high quality)
-        resources.append({
-            "title": f"freeCodeCamp: {query}",
-            "platform": "freeCodeCamp",
-            "url": f"https://www.freecodecamp.org/news/search/?query={quote_plus(query)}",
-            "type": "free",
-        })
-
-        # Coursera — always store in cache (filtered at read time)
-        resources.append({
-            "title": f"Coursera: {query}",
-            "platform": "Coursera",
-            "url": f"https://www.coursera.org/search?query={quote_plus(query)}",
-            "type": "paid",
-        })
-
-        # Udemy — always store in cache (filtered at read time)
-        resources.append({
-            "title": f"Udemy: {query}",
-            "platform": "Udemy",
-            "url": f"https://www.udemy.com/courses/search/?q={quote_plus(query)}",
-            "type": "paid",
-        })
+        resources = await resource_search.find_resources(client, settings.youtube_api_key, query, language)
 
     # --- Cache write (always store all resources, both free+paid) ---
     if db is not None:
@@ -265,7 +174,7 @@ async def _search_topic_resources(topic: dict, include_paid: bool, db=None) -> l
             import uuid as _uuid
             db.add(ResourceCache(
                 id=_uuid.uuid4(),
-                search_query=query,
+                search_query=cache_key,
                 resources=resources,
                 hit_count=0,
             ))
@@ -563,13 +472,14 @@ async def generate_roadmap(
     all_topics = []
     for phase in structure.get("phases", []):
         for skill_area in phase.get("skill_areas", []):
+            context = (skill_area.get("title", ""), phase.get("title", ""), target_role)
             for topic in skill_area.get("topics", []):
-                all_topics.append(topic)
+                all_topics.append((topic, context))
 
-    async def _attach(topic):
-        topic["resources"] = await _search_topic_resources(topic, include_paid, db=db)
+    async def _attach(topic, context):
+        topic["resources"] = await _search_topic_resources(topic, include_paid, db=db, context=context)
 
-    await asyncio.gather(*[_attach(t) for t in all_topics])
+    await asyncio.gather(*[_attach(t, ctx) for t, ctx in all_topics])
     logger.info("[Roadmap] Resources attached for %d topics", len(all_topics))
 
     # Step 5: Persist roadmap (KB will be generated in background)
@@ -609,3 +519,28 @@ async def generate_roadmap(
 
     logger.info("[Roadmap] Saved roadmap id=%s — KB generating in background", rm.id)
     return rm
+
+
+async def refresh_roadmap_resources(db: AsyncSession, rm: GeneratedRoadmap) -> int:
+    """Re-fetch every topic's resources in a saved roadmap with the current rules. Returns topics updated."""
+    import copy
+    from sqlalchemy.orm.attributes import flag_modified
+
+    data = copy.deepcopy(rm.roadmap_data)
+    jobs = []
+    for phase in data.get("phases", []):
+        for skill_area in phase.get("skill_areas", []):
+            context = (skill_area.get("title", ""), phase.get("title", ""), rm.target_role or "")
+            for topic in skill_area.get("topics", []):
+                jobs.append((topic, context))
+
+    async def _one(topic, context):
+        topic["resources"] = await _search_topic_resources(topic, rm.include_paid, db=db, context=context)
+
+    # Sequential: the cache write needs the session, and AsyncSession is not safe for concurrent use.
+    for topic, context in jobs:
+        await _one(topic, context)
+        await db.flush()
+    rm.roadmap_data = data
+    flag_modified(rm, "roadmap_data")
+    return len(jobs)
