@@ -66,8 +66,25 @@ def test_rejects_a_course_in_a_different_language():
     assert rs.is_on_topic("Variables and Data Types explained", "", q, "python")
 
 
+def test_language_alone_is_not_enough_unless_it_is_a_full_course():
+    q = "package management pip requirement file python"
+    assert not rs.is_on_topic("Python Download Offline Setup File | Install Python", "", q, "python")
+    assert rs.is_on_topic("Python for Beginners (Full Course)", "", q, "python")
+    assert rs.is_on_topic("Pip and Requirements Files Explained", "", q, "python")
+
+
+def test_one_generic_shared_word_is_not_a_strong_match():
+    q = "django mvc architecture python"
+    assert not rs.is_strong_match("Flutter Full Stack Tutorial - Spotify Clone w/ MVVM Architecture", q, "python")
+    assert rs.is_strong_match("Python Django Web Framework - Full Course for Beginners", q, "python")
+
+
+def test_plurals_match_singulars():
+    assert rs.is_strong_match("Token Based Authentication Tutorial", "web authentication cookies tokens", None)
+
+
 def test_rejects_off_topic_results():
-    assert not rs.is_on_topic("Lofi beats to study to", "chill music", "docker networking", None)
+    assert not rs.is_on_topic("Lofi beats to study to", "docker networking chill music", "docker networking", None)
     assert rs.is_on_topic("Docker Networking Deep Dive", "", "docker networking", None)
 
 
@@ -94,6 +111,13 @@ def test_short_clips_rank_below_full_courses():
         _video("Python decorators complete course", "Chan B", minutes=90, vid="long"),
     ], q, "python", limit=2)
     assert picked[0]["id"] == "long"
+
+
+def test_tiny_playlists_rank_last():
+    q = "flask python"
+    big = {"id": "big", "format": "playlist", "title": "Flask Tutorials", "channel": "A", "languages": [], "item_count": 20}
+    tiny = {"id": "tiny", "format": "playlist", "title": "Flask Tutorials", "channel": "B", "languages": [], "item_count": 1}
+    assert [c["id"] for c in rs.select([tiny, big], q, "python", limit=2)] == ["big", "tiny"]
 
 
 def test_keeps_one_result_per_channel():
@@ -214,3 +238,23 @@ def test_a_shared_phrase_beats_a_shared_generic_word():
         _video("Python Data Types and Variables - Full Course", "Chan B", vid="types"),
     ], q, "python", limit=1)
     assert picked[0]["id"] == "types"
+
+
+@pytest.mark.asyncio
+async def test_retries_a_short_burst_limit(monkeypatch):
+    monkeypatch.setattr(rs.asyncio, "sleep", lambda s: _noop())
+    calls = {"n": 0}
+
+    def handler(request):
+        if request.url.path.endswith("/search"):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(429)
+        return httpx.Response(200, json={"items": []})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        assert await rs._yt_search(client, "k", "flask python", "playlist") == []
+    assert calls["n"] == 2
+
+
+async def _noop():
+    return None

@@ -28,7 +28,7 @@ FREECODECAMP_CHANNEL_ID = "UC8butISFwT-Wl7EV0hUK0BQ"
 FREECODECAMP_BROWSE_URL = "https://www.freecodecamp.org/learn"
 
 # Bump when the selection rules change, so cached results from older rules are not reused.
-RULES_VERSION = "v2"
+RULES_VERSION = "v3"
 
 # Lower-cased channel titles of educators known for clear, English, full-length courses.
 TRUSTED_CHANNELS = {
@@ -120,14 +120,23 @@ def is_english_metadata(*language_codes: str | None) -> bool:
     return all(c.lower().startswith("en") for c in codes)
 
 
-def keyword_list(text: str) -> list[str]:
-    """Meaningful words in order, without duplicates."""
+def keyword_list(text: str, singular: bool = True) -> list[str]:
+    """Meaningful words in order, without duplicates. Singular forms by default, for matching."""
     out: list[str] = []
     for w in re.findall(r"[a-z0-9+#.]+", (text or "").lower()):
         w = w.strip(".")
+        if singular:
+            w = _singular(w)
         if (len(w) > 2 or w in LANGUAGES) and w not in _STOPWORDS and w not in out:
             out.append(w)
     return out
+
+
+def _singular(w: str) -> str:
+    """'tokens' and 'token' should match. Applied to both sides, so imperfect stems still line up."""
+    if len(w) > 4 and w.endswith("s") and not w.endswith("ss") and w not in LANGUAGES:
+        return w[:-1]
+    return w
 
 
 def keywords(text: str) -> set[str]:
@@ -142,23 +151,58 @@ def phrases(text: str) -> set[str]:
 
 def short_query(title: str, language: str | None, max_words: int = 5) -> str:
     """A short search built from the topic title. Long, very specific queries return nothing on YouTube."""
-    words = [w for w in keyword_list(title) if w != language][:max_words]
+    words = [w for w in keyword_list(title, singular=False) if w != language][:max_words]
     if language:
         words.append(language)
     return " ".join(words) or (title or "").strip()
 
 
+COURSE_SIGNAL = re.compile(r"full course|complete course|for beginners|crash course|bootcamp|"
+                           r"tutorial for beginners|masterclass|from scratch|zero to", re.IGNORECASE)
+
+
+# Words too common in course titles to show, alone, that a result is about the topic.
+GENERIC_WORDS = {
+    "file", "data", "system", "setup", "install", "installation", "project", "management",
+    "design", "application", "app", "code", "development", "tool", "tooling", "process",
+    "architecture", "framework", "service", "feature", "method", "performance", "advanced",
+    "web", "software", "computer", "science", "engineering", "skill", "level", "step",
+}
+
+
+def _topic_hits(title: str, query: str, language: str | None) -> set[str]:
+    """Specific topic words (not the language, not generic words) the title shares with the query."""
+    return (keywords(query) - {language or ""} - GENERIC_WORDS) & keywords(title)
+
+
+def _teaches_other_language(title: str, language: str | None) -> bool:
+    named = languages_in(title)
+    return bool(language and named and language not in named)
+
+
 def is_on_topic(title: str, description: str, query: str, language: str | None) -> bool:
-    """Shares a real keyword with the query, and does not teach a different language."""
-    text = f"{title} {description}"
-    if language:
-        named = languages_in(title)
-        if named and language not in named:
-            return False
-    wanted = keywords(query) - {language or ""}
+    """Shares a real topic word with the query, or is a full course in the topic's language,
+    and does not teach a different language. Only the title counts: descriptions are often
+    long keyword lists."""
+    if _teaches_other_language(title, language):
+        return False
+    wanted = keywords(query) - {language or ""} - GENERIC_WORDS
     if not wanted:
         return True
-    return bool(wanted & keywords(text)) or (language is not None and language in languages_in(title))
+    if _topic_hits(title, query, language) or phrases(query) & phrases(title):
+        return True
+    return bool(language and language in languages_in(title) and COURSE_SIGNAL.search(title))
+
+
+def is_strong_match(title: str, query: str, language: str | None) -> bool:
+    """Stricter, for the single freeCodeCamp pick: a shared phrase, two topic words, or the
+    topic's language plus a topic word. One shared generic word such as 'architecture' is not enough."""
+    if _teaches_other_language(title, language):
+        return False
+    hits = _topic_hits(title, query, language)
+    if phrases(query) & phrases(title) or len(hits) >= 2:
+        return True
+    return bool(hits and language and language in languages_in(title))
 
 
 def is_trusted(channel_title: str) -> bool:
@@ -182,7 +226,7 @@ def score(candidate: dict, query: str) -> float:
         s += 5
     if candidate["format"] == "playlist":
         items = candidate.get("item_count") or 0
-        s += 2 if items >= 5 else (0.5 if items == 0 else 0)
+        s += 2 if items >= 5 else (0.5 if items == 0 else (0 if items >= 3 else -3))
     else:
         minutes = candidate.get("minutes", 0)
         s += 2 if minutes >= 40 else (1 if minutes >= 20 else -2)
@@ -222,7 +266,12 @@ async def _yt_search(client: httpx.AsyncClient, key: str, q: str, kind: str, **e
         "part": "snippet", "q": q, "type": kind, "maxResults": 10,
         "relevanceLanguage": "en", "safeSearch": "moderate", "key": key, **extra,
     }
-    resp = await client.get(f"{YT_API}/search", params=params)
+    for wait in (2, 6, None):
+        resp = await client.get(f"{YT_API}/search", params=params)
+        # 429 is a short burst limit, not the daily quota: wait and try again.
+        if resp.status_code != 429 or wait is None:
+            break
+        await asyncio.sleep(wait)
     if resp.status_code != 200:
         raise RuntimeError(f"YouTube search returned {resp.status_code}")
     out = []
@@ -351,10 +400,16 @@ async def find_freecodecamp(client, key: str, query: str, language: str | None) 
 
 
 async def _freecodecamp_search(client, key: str, q: str, topic_query: str, language: str | None) -> list[dict]:
+    widened = q != topic_query
     videos = await _yt_search(client, key, q, "video", channelId=FREECODECAMP_CHANNEL_ID)
     await _yt_details(client, key, videos)
-    long_enough = [v for v in videos if v.get("minutes", 0) >= 20]
-    return select(long_enough, topic_query, language, limit=1)
+    fits = [
+        v for v in videos
+        if v.get("minutes", 0) >= 20
+        and (is_on_topic(v["title"], "", topic_query, language) if widened
+             else is_strong_match(v["title"], topic_query, language))
+    ]
+    return select(fits, topic_query, language, limit=1)
 
 
 # ---------- Public entry point ----------
